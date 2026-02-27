@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infinity Vault | Premium Investment Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;800&display=swap"
+        rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+    <script src="auth.js" defer></script>
+    <script src="storage.js" defer></script>
+    <script src="charts.js" defer></script>
+    <script src="app.js" defer></script>
+</head>
+
+<body class="dark-theme">
+
+    <!-- ===================== AUTH SCREEN ===================== -->
+    <div id="auth-screen" class="auth-screen">
+        <div class="auth-container glass">
+            <div class="auth-logo">
+                <span class="logo-icon"><i class="ph-fill ph-infinity"></i></span>
+                <h1>Infinity Vault</h1>
+            </div>
+            <p class="auth-subtitle">Your personal, private investment tracker.</p>
+            <form id="login-form" class="auth-form hidden">
+                <h2>Welcome back</h2>
+                <div class="form-group">
+                    <label for="login-username">Username</label>
+                    <input type="text" id="login-username" required placeholder="Enter your username"
+                        autocomplete="username" />
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" required placeholder="Enter your password"
+                        autocomplete="current-password" />
+                </div>
+                <p id="login-error" class="auth-error hidden">Invalid username or password.</p>
+                <button type="submit" class="btn-primary auth-btn"><i class="ph-bold ph-sign-in"></i> Unlock
+                    Vault</button>
+            </form>
+            <form id="register-form" class="auth-form hidden">
+                <h2>Create Your Vault</h2>
+                <div class="form-group">
+                    <label for="register-username">Choose a Username</label>
+                    <input type="text" id="register-username" required placeholder="e.g. adarsh"
+                        autocomplete="username" />
+                </div>
+                <div class="form-group">
+                    <label for="register-password">Create a Password</label>
+                    <input type="password" id="register-password" required minlength="4" placeholder="Min 4 characters"
+                        autocomplete="new-password" />
+                </div>
+                <div class="form-group">
+                    <label for="register-confirm">Confirm Password</label>
+                    <input type="password" id="register-confirm" required minlength="4" placeholder="Re-enter password"
+                        autocomplete="new-password" />
+                </div>
+                <p id="register-error" class="auth-error hidden"></p>
+                <button type="submit" class="btn-primary auth-btn"><i class="ph-bold ph-shield-check"></i> Create
+                    Vault</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ===================== MAIN APP ===================== -->
+    <div id="dashboard" class="app-container hidden">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <div class="logo">
+                <span class="logo-icon"><i class="ph-fill ph-infinity"></i></span>
+                <h1>Infinity Vault</h1>
+            </div>
+            <ul class="nav-links">
+                <li class="active" data-page="page-dashboard"><a href="#" id="nav-dashboard"><i
+                            class="ph ph-squares-four icon"></i> Dashboard</a></li>
+                <li data-page="page-investments"><a href="#" id="nav-investments"><i class="ph ph-briefcase icon"></i>
+                        Investments</a></li>
+                <li data-page="page-settings"><a href="#" id="nav-settings"><i class="ph ph-gear icon"></i> Settings</a>
+                </li>
+            </ul>
+            <div class="sidebar-footer">
+                <div class="theme-toggle">
+                    <button id="toggle-theme-btn"><i class="ph-fill ph-sun"></i> Light Mode</button>
+                </div>
+                <button id="logout-btn" class="btn-logout"><i class="ph-bold ph-sign-out"></i> Logout</button>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+
+            <!-- ===== PAGE: DASHBOARD ===== -->
+            <div id="page-dashboard" class="page active-page">
+                <header class="top-header">
+                    <div class="header-greeting">
+                        <h2>Overview</h2>
+                        <p id="greeting-text">Track your wealth growth securely.</p>
+                    </div>
+                    <button id="add-investment-btn" class="btn-primary"><i class="ph-bold ph-plus"></i> Add
+                        Investment</button>
+                </header>
+                <section class="kpi-grid">
+                    <div class="kpi-card glass">
+                        <div class="kpi-card-header">
+                            <div class="kpi-icon"><i class="ph-duotone ph-currency-inr"></i></div>
+                            <p class="kpi-label">Total Invested</p>
+                        </div>
+                        <div class="kpi-info">
+                            <h3 class="kpi-value" id="kpi-total-invested">₹0</h3>
+                        </div>
+                    </div>
+                    <div class="kpi-card glass highlight">
+                        <div class="kpi-card-header">
+                            <div class="kpi-icon"><i class="ph-duotone ph-trend-up"></i></div>
+                            <p class="kpi-label">Current / Maturity Value</p>
+                        </div>
+                        <div class="kpi-info">
+                            <h3 class="kpi-value" id="kpi-total-maturity">₹0</h3>
+                        </div>
+                    </div>
+                    <div class="kpi-card glass">
+                        <div class="kpi-card-header">
+                            <div class="kpi-icon"><i class="ph-duotone ph-rocket-launch"></i></div>
+                            <p class="kpi-label">Overall Returns (p.a.)</p>
+                        </div>
+                        <div class="kpi-info">
+                            <h3 class="kpi-value positive" id="kpi-total-returns">0%</h3>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Gold Price Banner -->
+                <div id="gold-price-banner" class="gold-banner glass hidden">
+                    <div class="gold-banner-left">
+                        <i class="ph-fill ph-coins"></i>
+                        <div>
+                            <strong>Live Gold Price (24K)</strong>
+                            <span id="gold-price-value">Fetching...</span>
+                        </div>
+                    </div>
+                    <small id="gold-last-updated">—</small>
+                </div>
+
+                <section class="charts-section">
+                    <div class="chart-container glass">
+                        <h3>Asset Diversification</h3>
+                        <div class="canvas-wrapper"><canvas id="diversificationChart"></canvas></div>
+                    </div>
+                    <div class="chart-container glass">
+                        <h3>Projected Growth</h3>
+                        <div class="canvas-wrapper bar-canvas"><canvas id="projectionChart"></canvas></div>
+                    </div>
+                </section>
+
+                <!-- More Insights -->
+                <section class="charts-section charts-section-full">
+                    <div class="chart-container glass">
+                        <h3>Returns by Investment (p.a.)</h3>
+                        <div class="canvas-wrapper" style="height:auto; min-height:200px"><canvas
+                                id="returnsChart"></canvas></div>
+                    </div>
+                </section>
+                <section class="charts-section">
+                    <div class="chart-container glass">
+                        <h3>Type-Wise Performance</h3>
+                        <div class="canvas-wrapper bar-canvas"><canvas id="typePerformanceChart"></canvas></div>
+                    </div>
+                    <div class="chart-container glass">
+                        <h3>Investment Timeline</h3>
+                        <div class="canvas-wrapper bar-canvas"><canvas id="timelineChart"></canvas></div>
+                    </div>
+                </section>
+                <section class="recent-investments glass">
+                    <div class="section-header">
+                        <h3>Recent Additions</h3>
+                        <button id="view-all-btn" class="btn-text">View All <i
+                                class="ph-bold ph-arrow-right"></i></button>
+                    </div>
+                    <div class="table-container">
+                        <table id="investments-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Invested</th>
+                                    <th>Current/Maturity</th>
+                                    <th>Returns (p.a.)</th>
+                                    <th>Date</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="investments-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div id="empty-state" class="empty-state hidden">
+                        <i class="ph-duotone ph-files"
+                            style="font-size: 3rem; margin-bottom: 1rem; color: var(--text-muted)"></i>
+                        <p>No investments found. Add one to get started!</p>
+                    </div>
+                </section>
+            </div>
+
+            <!-- ===== PAGE: ALL INVESTMENTS ===== -->
+            <div id="page-investments" class="page hidden">
+                <header class="top-header">
+                    <div class="header-greeting">
+                        <h2>All Investments</h2>
+                        <p>Browse and filter your full portfolio.</p>
+                    </div>
+                    <button id="add-investment-btn-2" class="btn-primary"><i class="ph-bold ph-plus"></i> Add
+                        Investment</button>
+                </header>
+                <!-- Filters -->
+                <div class="filter-bar glass">
+                    <div class="filter-search">
+                        <i class="ph ph-magnifying-glass"></i>
+                        <input type="text" id="inv-search" placeholder="Search investments..." />
+                    </div>
+                    <div class="filter-chips">
+                        <button class="filter-chip active" data-filter="All">All</button>
+                        <button class="filter-chip" data-filter="Fixed Deposit">FD</button>
+                        <button class="filter-chip" data-filter="Stocks">Stocks</button>
+                        <button class="filter-chip" data-filter="Mutual Fund">MF</button>
+                        <button class="filter-chip" data-filter="SIP">SIP</button>
+                        <button class="filter-chip" data-filter="Crypto">Crypto</button>
+                        <button class="filter-chip" data-filter="Gold">Gold</button>
+                        <button class="filter-chip" data-filter="Real Estate">Real Estate</button>
+                        <button class="filter-chip" data-filter="Other">Other</button>
+                    </div>
+                </div>
+                <!-- Full Table -->
+                <section class="recent-investments glass" style="margin-top:1.5rem">
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Invested</th>
+                                    <th>Current/Maturity</th>
+                                    <th>Returns (p.a.)</th>
+                                    <th>Date</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="all-investments-tbody"></tbody>
+                        </table>
+                    </div>
+                    <div id="all-empty-state" class="empty-state hidden">
+                        <i class="ph-duotone ph-funnel"
+                            style="font-size: 3rem; margin-bottom: 1rem; color: var(--text-muted)"></i>
+                        <p>No investments match your filter.</p>
+                    </div>
+                </section>
+            </div>
+
+            <!-- ===== PAGE: SETTINGS ===== -->
+            <div id="page-settings" class="page hidden">
+                <header class="top-header">
+                    <div class="header-greeting">
+                        <h2>Settings</h2>
+                        <p>Manage your vault preferences and data.</p>
+                    </div>
+                </header>
+
+                <div class="settings-grid">
+                    <!-- Change Password -->
+                    <div class="settings-card glass">
+                        <div class="settings-card-header">
+                            <i class="ph-duotone ph-lock-key"></i>
+                            <h3>Change Password</h3>
+                        </div>
+                        <form id="change-password-form">
+                            <div class="form-group">
+                                <label for="current-password">Current Password</label>
+                                <input type="password" id="current-password" required />
+                            </div>
+                            <div class="form-group">
+                                <label for="new-password">New Password</label>
+                                <input type="password" id="new-password" required minlength="4" />
+                            </div>
+                            <div class="form-group">
+                                <label for="confirm-new-password">Confirm New Password</label>
+                                <input type="password" id="confirm-new-password" required minlength="4" />
+                            </div>
+                            <p id="password-msg" class="settings-msg hidden"></p>
+                            <button type="submit" class="btn-primary"><i class="ph-bold ph-check"></i> Update
+                                Password</button>
+                        </form>
+                    </div>
+
+                    <!-- Data Management -->
+                    <div class="settings-card glass">
+                        <div class="settings-card-header">
+                            <i class="ph-duotone ph-database"></i>
+                            <h3>Data Management</h3>
+                        </div>
+                        <div class="settings-actions">
+                            <div class="settings-action-item">
+                                <div>
+                                    <strong>Export Data</strong>
+                                    <p>Download all investments as a JSON file.</p>
+                                </div>
+                                <button id="export-btn" class="btn-secondary"><i class="ph-bold ph-download-simple"></i>
+                                    Export</button>
+                            </div>
+                            <div class="settings-action-item">
+                                <div>
+                                    <strong>Import Data</strong>
+                                    <p>Restore investments from a JSON backup.</p>
+                                </div>
+                                <label for="import-file" class="btn-secondary"
+                                    style="cursor:pointer; display:inline-flex; align-items:center; gap:0.5rem">
+                                    <i class="ph-bold ph-upload-simple"></i> Import
+                                </label>
+                                <input type="file" id="import-file" accept=".json" style="display:none" />
+                            </div>
+                            <div class="settings-action-item danger-zone">
+                                <div>
+                                    <strong>Clear All Data</strong>
+                                    <p>Permanently delete all investments. Cannot be undone.</p>
+                                </div>
+                                <button id="clear-data-btn" class="btn-danger"><i class="ph-bold ph-trash"></i>
+                                    Clear</button>
+                            </div>
+                        </div>
+                        <p id="data-msg" class="settings-msg hidden"></p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- ===================== ADD INVESTMENT MODAL ===================== -->
+    <div id="investment-modal" class="modal-overlay hidden">
+        <div class="modal glass-modal">
+            <div class="modal-header">
+                <h2>Add New Investment</h2>
+                <button id="close-modal-btn" class="close-btn"><i class="ph-bold ph-x"></i></button>
+            </div>
+            <form id="add-investment-form" class="modal-form">
+                <div class="form-group">
+                    <label for="inv-name">Investment Name</label>
+                    <input type="text" id="inv-name" required placeholder="e.g. HDFC Fixed Deposit" />
+                </div>
+                <div class="form-group">
+                    <label for="inv-type">Asset Type</label>
+                    <select id="inv-type" required>
+                        <option value="Fixed Deposit">Fixed Deposit</option>
+                        <option value="SIP">SIP (Systematic Investment Plan)</option>
+                        <option value="Stocks">Stocks / Equity</option>
+                        <option value="Mutual Fund">Mutual Fund</option>
+                        <option value="Crypto">Cryptocurrency</option>
+                        <option value="Real Estate">Real Estate</option>
+                        <option value="Gold">Gold</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+
+                <!-- ---- FD Fields ---- -->
+                <div id="fd-fields" class="conditional-fields">
+                    <div class="form-group">
+                        <label for="inv-amount">Principal / Invested Amount (₹)</label>
+                        <input type="number" id="inv-amount" min="0" step="0.01" />
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group half">
+                            <label for="inv-rate">Interest Rate (% p.a.)</label>
+                            <input type="number" id="inv-rate" step="0.01" min="0" max="100" placeholder="e.g. 7.5" />
+                        </div>
+                        <div class="form-group half">
+                            <label for="inv-maturity-date">Maturity Date</label>
+                            <input type="date" id="inv-maturity-date" />
+                        </div>
+                    </div>
+                    <div class="fd-calc-preview glass" id="fd-preview">
+                        <div class="fd-calc-row">
+                            <span>Tenure</span>
+                            <strong id="fd-tenure-display">— days</strong>
+                        </div>
+                        <div class="fd-calc-row">
+                            <span>Calculated Maturity</span>
+                            <strong id="fd-maturity-display">₹ —</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ---- SIP Fields ---- -->
+                <div id="sip-fields" class="conditional-fields hidden">
+                    <div class="form-row">
+                        <div class="form-group half">
+                            <label for="sip-monthly">Monthly Investment (₹)</label>
+                            <input type="number" id="sip-monthly" min="0" step="1" placeholder="e.g. 5000" />
+                        </div>
+                        <div class="form-group half">
+                            <label for="sip-months">Duration (months)</label>
+                            <input type="number" id="sip-months" min="1" step="1" placeholder="e.g. 36" />
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="sip-return-rate">Expected Annual Return (%)</label>
+                        <input type="number" id="sip-return-rate" min="0" step="0.01" placeholder="e.g. 12" />
+                    </div>
+                    <div class="fd-calc-preview glass" id="sip-preview">
+                        <div class="fd-calc-row">
+                            <span>Total Invested</span>
+                            <strong id="sip-invested-display">₹ —</strong>
+                        </div>
+                        <div class="fd-calc-row">
+                            <span>Expected Maturity</span>
+                            <strong id="sip-maturity-display">₹ —</strong>
+                        </div>
+                        <div class="fd-calc-row">
+                            <span>Est. Wealth Gain</span>
+                            <strong id="sip-gain-display">₹ —</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ---- Gold Fields ---- -->
+                <div id="gold-fields" class="conditional-fields hidden">
+                    <div class="form-row">
+                        <div class="form-group half">
+                            <label for="gold-weight">Weight (grams)</label>
+                            <input type="number" id="gold-weight" min="0" step="0.001" placeholder="e.g. 10" />
+                        </div>
+                        <div class="form-group half">
+                            <label for="gold-purchase-price">Purchase Price (₹/gram)</label>
+                            <input type="number" id="gold-purchase-price" min="0" step="0.01" placeholder="e.g. 6500" />
+                        </div>
+                    </div>
+                    <div class="fd-calc-preview glass" id="gold-preview">
+                        <div class="fd-calc-row">
+                            <span>Total Invested</span>
+                            <strong id="gold-invested-display">₹ —</strong>
+                        </div>
+                        <div class="fd-calc-row">
+                            <span>Live Value</span>
+                            <strong id="gold-live-display">₹ — (fetching...)</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ---- Generic (Non-FD, Non-SIP, Non-Gold) Fields ---- -->
+                <div id="generic-fields" class="conditional-fields hidden">
+                    <div class="form-row">
+                        <div class="form-group half">
+                            <label for="generic-amount">Invested Amount (₹)</label>
+                            <input type="number" id="generic-amount" min="0" step="0.01" />
+                        </div>
+                        <div class="form-group half">
+                            <label for="inv-maturity">Maturity / Current Value (₹)</label>
+                            <input type="number" id="inv-maturity" min="0" step="0.01" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="inv-date">Investment / Start Date</label>
+                    <input type="date" id="inv-date" required />
+                </div>
+                <div class="form-actions">
+                    <button type="button" id="cancel-modal-btn" class="btn-secondary">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Investment</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+
+</html>
