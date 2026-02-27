@@ -590,18 +590,34 @@ td strong {
   display: inline-block;
 }
 
+.view-proof-btn,
 .delete-btn {
-  background: var(--danger-bg);
   border: 1px solid transparent;
-  color: var(--danger);
   cursor: pointer;
   width: 36px;
   height: 36px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 0.75rem;
   transition: all 0.2s;
+}
+
+.view-proof-btn {
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--primary);
+}
+
+.view-proof-btn:hover {
+  background: var(--primary);
+  color: white;
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+.delete-btn {
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 .delete-btn:hover {

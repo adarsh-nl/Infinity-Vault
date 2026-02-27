@@ -14,7 +14,8 @@ class InvestmentStorage {
                 interestRate: inv.interestRate != null ? parseFloat(inv.interestRate) : null,
                 tenureDays: inv.tenureDays != null ? parseInt(inv.tenureDays, 10) : null,
                 goldWeight: inv.goldWeight != null ? parseFloat(inv.goldWeight) : null,
-                goldPurchasePrice: inv.goldPurchasePrice != null ? parseFloat(inv.goldPurchasePrice) : null
+                goldPurchasePrice: inv.goldPurchasePrice != null ? parseFloat(inv.goldPurchasePrice) : null,
+                proof: inv.proof || null
             }));
         } catch (e) {
             console.error('Failed to parse investments', e);

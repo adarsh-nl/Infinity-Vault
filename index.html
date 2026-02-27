@@ -462,15 +462,39 @@
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="inv-date">Investment / Start Date</label>
-                    <input type="date" id="inv-date" required />
+                <div class="form-row">
+                    <div class="form-group half">
+                        <label for="inv-date">Investment / Start Date</label>
+                        <input type="date" id="inv-date" required />
+                    </div>
+                    <div class="form-group half">
+                        <label for="inv-proof">Proof (Optional Image)</label>
+                        <input type="file" id="inv-proof" accept="image/*" />
+                    </div>
                 </div>
+                <!-- Preview for proof -->
+                <div id="proof-preview-container" class="hidden" style="margin-bottom: 1.5rem;">
+                    <p style="font-size: 0.8rem; margin-bottom: 0.5rem; color: var(--text-muted)">Proof Preview:</p>
+                    <img id="proof-preview-img" src=""
+                        style="max-width: 100px; max-height: 100px; border-radius: 0.5rem; border: 1px solid var(--border-color);" />
+                </div>
+
                 <div class="form-actions">
                     <button type="button" id="cancel-modal-btn" class="btn-secondary">Cancel</button>
                     <button type="submit" class="btn-primary">Save Investment</button>
                 </div>
             </form>
+        </div>
+    </div>
+    <!-- ===================== PROOF VIEW MODAL ===================== -->
+    <div id="proof-modal" class="modal-overlay hidden">
+        <div class="modal glass-modal" style="max-width: 600px; text-align: center;">
+            <div class="modal-header">
+                <h2>Investment Proof</h2>
+                <button id="close-proof-btn" class="close-btn"><i class="ph-bold ph-x"></i></button>
+            </div>
+            <img id="proof-display-img" src="" alt="Proof"
+                style="max-width: 100%; border-radius: 0.5rem; margin-top: 1rem;" />
         </div>
     </div>
 </body>

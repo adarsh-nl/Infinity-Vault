@@ -242,6 +242,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const goldInvestedDisplay = document.getElementById('gold-invested-display');
     const goldLiveDisplay = document.getElementById('gold-live-display');
 
+    // Proof elements
+    const invProofInput = document.getElementById('inv-proof');
+    const proofPreviewContainer = document.getElementById('proof-preview-container');
+    const proofPreviewImg = document.getElementById('proof-preview-img');
+    const proofModal = document.getElementById('proof-modal');
+    const closeProofBtn = document.getElementById('close-proof-btn');
+    const proofDisplayImg = document.getElementById('proof-display-img');
+    let currentProofBase64 = null;
+
     // ===================== FORM FIELD TOGGLE =====================
     const allConditionalInputs = [
         invAmountInput, invRateInput, invMaturityDate,
@@ -340,11 +349,49 @@ document.addEventListener('DOMContentLoaded', () => {
         fdTenureDisplay.textContent = '— days'; fdMaturityDisplay.textContent = '₹ —';
         sipInvestedDisplay.textContent = '₹ —'; sipMaturityDisplay.textContent = '₹ —'; sipGainDisplay.textContent = '₹ —';
         goldInvestedDisplay.textContent = '₹ —'; goldLiveDisplay.textContent = '₹ — (fetching...)';
+        currentProofBase64 = null;
+        proofPreviewContainer.classList.add('hidden');
     };
     addInvestmentBtn.addEventListener('click', openModal);
     closeModalBtn.addEventListener('click', closeModal);
     cancelModalBtn.addEventListener('click', closeModal);
     modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+
+    // Image compression for proof
+    invProofInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) {
+            currentProofBase64 = null;
+            proofPreviewContainer.classList.add('hidden');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+                const MAX_WIDTH = 800;
+                if (width > MAX_WIDTH) {
+                    height = Math.round((height * MAX_WIDTH) / width);
+                    width = MAX_WIDTH;
+                }
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                currentProofBase64 = canvas.toDataURL('image/jpeg', 0.6);
+                proofPreviewImg.src = currentProofBase64;
+                proofPreviewContainer.classList.remove('hidden');
+            };
+            img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+
+    closeProofBtn.addEventListener('click', () => proofModal.classList.add('hidden'));
+    proofModal.addEventListener('click', (e) => { if (e.target === proofModal) proofModal.classList.add('hidden'); });
 
     // ===================== FORM SUBMISSION =====================
     form.addEventListener('submit', (e) => {
@@ -384,23 +431,29 @@ document.addEventListener('DOMContentLoaded', () => {
             date: invDateInput.value,
             interestRate, maturityDate, tenureDays,
             sipMonthly: sipMonthlyAmt, sipDuration, sipRate,
-            goldWeight: goldWeightVal, goldPurchasePrice: goldPurchasePriceVal
+            goldWeight: goldWeightVal, goldPurchasePrice: goldPurchasePriceVal,
+            proof: currentProofBase64
         });
         closeModal();
         updateDashboard();
     });
 
-    // ===================== DELETE =====================
-    const handleDelete = (e) => {
-        const btn = e.target.closest('.delete-btn');
-        if (btn && confirm('Are you sure you want to delete this investment?')) {
-            InvestmentStorage.deleteInvestment(btn.dataset.id);
+    // ===================== TABLE ACTIONS =====================
+    const handleTableAction = (e) => {
+        const deleteBtn = e.target.closest('.delete-btn');
+        if (deleteBtn && confirm('Are you sure you want to delete this investment?')) {
+            InvestmentStorage.deleteInvestment(deleteBtn.dataset.id);
             updateDashboard();
             renderAllInvestments();
         }
+        const proofBtn = e.target.closest('.view-proof-btn');
+        if (proofBtn) {
+            proofDisplayImg.src = proofBtn.dataset.proof;
+            proofModal.classList.remove('hidden');
+        }
     };
-    tbody.addEventListener('click', handleDelete);
-    document.getElementById('all-investments-tbody').addEventListener('click', handleDelete);
+    tbody.addEventListener('click', handleTableAction);
+    document.getElementById('all-investments-tbody').addEventListener('click', handleTableAction);
 
     // ===================== BUILD TABLE ROW =====================
     const buildRow = (inv) => {
@@ -427,6 +480,10 @@ document.addEventListener('DOMContentLoaded', () => {
             typeExtra = `<br><small style="color:var(--text-muted)">${inv.goldWeight}g</small>`;
         }
 
+        let proofBtnHtml = inv.proof
+            ? `<button class="view-proof-btn" data-proof="${inv.proof}" title="View Proof" style="margin-right:0.5rem"><i class="ph-bold ph-image"></i></button>`
+            : '';
+
         tr.innerHTML = `
             <td><strong>${inv.name}</strong></td>
             <td><span class="type-badge">${inv.type}</span>${typeExtra}</td>
@@ -434,7 +491,10 @@ document.addEventListener('DOMContentLoaded', () => {
             <td style="color:var(--${isProfit ? 'success' : 'danger'})">${formatCurrency(mat)}</td>
             <td style="color:var(--${isProfit ? 'success' : 'danger'});font-weight:600">${isProfit ? '+' : ''}${invReturn}%</td>
             <td>${formatDate(inv.date)}</td>
-            <td><button class="delete-btn" data-id="${inv.id}" title="Delete"><i class="ph-bold ph-trash"></i></button></td>
+            <td>
+                ${proofBtnHtml}
+                <button class="delete-btn" data-id="${inv.id}" title="Delete"><i class="ph-bold ph-trash"></i></button>
+            </td>
         `;
         return tr;
     };
