@@ -12,6 +12,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(dateString));
     };
 
+    // Escape user-controlled strings before they enter innerHTML. Investment
+    // names (and imported JSON) are attacker-influenced, so anything rendered
+    // via template strings must pass through here to prevent stored XSS.
+    const escapeHtml = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+
     const calculateFDMaturity = (principal, annualRate, days) => {
         if (!principal || !annualRate || !days || days <= 0) return 0;
         return principal * Math.pow(1 + (annualRate / 100) / 4, 4 * days / 365);
@@ -473,20 +480,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let typeExtra = '';
         if (inv.type === 'Fixed Deposit' && inv.interestRate) {
-            typeExtra = `<br><small style="color:var(--text-muted)">${inv.interestRate}% · ${inv.tenureDays || '—'}d</small>`;
+            typeExtra = `<br><small style="color:var(--text-muted)">${Number(inv.interestRate)}% · ${Number(inv.tenureDays) || '—'}d</small>`;
         } else if (inv.type === 'SIP' && inv.sipMonthly) {
-            typeExtra = `<br><small style="color:var(--text-muted)">₹${inv.sipMonthly.toLocaleString('en-IN')}/mo · ${inv.sipDuration}mo</small>`;
+            typeExtra = `<br><small style="color:var(--text-muted)">₹${(Number(inv.sipMonthly) || 0).toLocaleString('en-IN')}/mo · ${Number(inv.sipDuration) || 0}mo</small>`;
         } else if (inv.type === 'Gold' && inv.goldWeight) {
-            typeExtra = `<br><small style="color:var(--text-muted)">${inv.goldWeight}g</small>`;
+            typeExtra = `<br><small style="color:var(--text-muted)">${Number(inv.goldWeight)}g</small>`;
         }
 
+        // proof is validated to be a data:image/* URL on import; escape defensively.
         let proofBtnHtml = inv.proof
-            ? `<button class="view-proof-btn" data-proof="${inv.proof}" title="View Proof" style="margin-right:0.5rem"><i class="ph-bold ph-image"></i></button>`
+            ? `<button class="view-proof-btn" data-proof="${escapeHtml(inv.proof)}" title="View Proof" style="margin-right:0.5rem"><i class="ph-bold ph-image"></i></button>`
             : '';
 
         tr.innerHTML = `
-            <td><strong>${inv.name}</strong></td>
-            <td><span class="type-badge">${inv.type}</span>${typeExtra}</td>
+            <td><strong>${escapeHtml(inv.name)}</strong></td>
+            <td><span class="type-badge">${escapeHtml(inv.type)}</span>${typeExtra}</td>
             <td>${formatCurrency(amt)}</td>
             <td style="color:var(--${isProfit ? 'success' : 'danger'})">${formatCurrency(mat)}</td>
             <td style="color:var(--${isProfit ? 'success' : 'danger'});font-weight:600">${isProfit ? '+' : ''}${invReturn}%</td>
@@ -614,8 +622,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const reader = new FileReader();
         reader.onload = (ev) => {
             try {
-                const imported = JSON.parse(ev.target.result);
-                if (!Array.isArray(imported)) throw new Error('Invalid');
+                const parsed = JSON.parse(ev.target.result);
+                const imported = InvestmentStorage.normalizeImported(parsed);
+                if (!imported) throw new Error('Invalid');
                 InvestmentStorage.saveInvestments(imported);
                 updateDashboard(); renderAllInvestments();
                 showMsg(document.getElementById('data-msg'), `Imported ${imported.length} investments!`, 'success');
