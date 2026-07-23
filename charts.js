@@ -118,13 +118,8 @@ class DashboardCharts {
 
         investments.forEach(inv => {
             const amt = Number(inv.amount) || 0;
-            const mat = Number(inv.maturity) || 0;
             if (amt <= 0) return;
-            let days = inv.tenureDays;
-            if (!days || days <= 0) {
-                days = Math.max(1, Finance.daysBetween(inv.date || now, now));
-            }
-            const ret = Finance.annualizedReturn(amt, mat, days);
+            const ret = Finance.investmentReturn(inv, now); // money-weighted (XIRR)
             labels.push(inv.name.length > 20 ? inv.name.slice(0, 18) + '…' : inv.name);
             data.push(Math.round(ret * 100) / 100);
             colors.push(ret >= 0 ? '#34d399' : '#f87171');

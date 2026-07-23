@@ -21,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Financial formulas live in finance.js (loaded before this script) so they
     // can be unit-tested in isolation. Alias them for readability below.
-    const { calculateFDMaturity, calculateSIPMaturity, annualizedReturn, daysBetween } = Finance;
+    const { calculateFDMaturity, calculateSIPMaturity, investmentReturn, daysBetween } = Finance;
 
     // ===================== GOLD PRICE MANAGER =====================
     const GOLD_CACHE_KEY = 'infinity_vault_gold_cache';
@@ -469,14 +469,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const amt = Number(inv.amount) || 0;
         const mat = Number(inv.maturity) || 0;
         const isProfit = mat >= amt;
-        let invReturn = 0;
-        if (amt > 0) {
-            let days = inv.tenureDays;
-            if (!days || days <= 0) {
-                days = Math.max(1, daysBetween(inv.date || new Date(), new Date()));
-            }
-            invReturn = Math.round(annualizedReturn(amt, mat, days) * 100) / 100;
-        }
+        // Money-weighted return (XIRR) — accounts for SIP contribution timing.
+        const invReturn = amt > 0 ? Math.round(investmentReturn(inv) * 100) / 100 : 0;
 
         let typeExtra = '';
         if (inv.type === 'Fixed Deposit' && inv.interestRate) {

@@ -231,35 +231,14 @@ class InvestmentStorage {
 
         let totalInvested = 0;
         let totalMaturity = 0;
-        let weightedAnnualReturn = 0;
-
         investments.forEach(inv => {
-            const amt = Number(inv.amount) || 0;
-            const mat = Number(inv.maturity) || 0;
-            totalInvested += amt;
-            totalMaturity += mat;
-
-            // Calculate annualized return for each investment
-            if (amt > 0) {
-                let days = inv.tenureDays;
-                if (!days || days <= 0) {
-                    // For non-FD: days elapsed from investment date to today
-                    days = Math.max(1, Finance.daysBetween(inv.date || now, now));
-                }
-                const annualized = Finance.annualizedReturn(amt, mat, days);
-                // Weight by invested amount
-                weightedAnnualReturn += annualized * amt;
-            }
+            totalInvested += Number(inv.amount) || 0;
+            totalMaturity += Number(inv.maturity) || 0;
         });
 
-        let returnsPercentage = 0;
-        if (totalInvested > 0) {
-            // Weighted average annualized return
-            returnsPercentage = weightedAnnualReturn / totalInvested;
-        }
-
-        // Guard against floating point edge cases
-        returnsPercentage = Math.round(returnsPercentage * 100) / 100;
+        // Money-weighted portfolio return (XIRR over every investment's dated
+        // cash flows) — correctly accounts for staggered SIP contributions.
+        const returnsPercentage = Math.round(Finance.portfolioReturn(investments, now) * 100) / 100;
 
         return {
             totalInvested,
