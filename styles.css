@@ -3,6 +3,10 @@
   --font-primary: 'Inter', system-ui, -apple-system, sans-serif;
   --font-heading: 'Outfit', 'Inter', sans-serif;
 
+  /* Motion easing tokens (paired with motion.js) */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
   /* Light Theme - Clean & Airy */
   --bg-main: #f8fafc;
   --bg-gradient: radial-gradient(circle at top right, #e0e7ff 0%, #f8fafc 40%, #f1f5f9 100%);
@@ -1353,4 +1357,158 @@ select:focus-visible,
     flex-direction: column;
     text-align: center;
   }
+}
+/* ============================================================
+   MOTION LAYER  (paired with motion.js — all transform/opacity,
+   GPU-composited, and fully disabled under prefers-reduced-motion)
+   ============================================================ */
+
+/* --- Preloader: branded mark that covers first paint, then fades --- */
+#preloader {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-main);
+  background-image: var(--bg-gradient);
+}
+
+#preloader .preloader-mark {
+  font-size: 3.5rem;
+  color: var(--primary);
+  line-height: 1;
+  filter: drop-shadow(0 8px 30px var(--primary-glow));
+  animation: preloader-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes preloader-pulse {
+  0%, 100% { opacity: 0.55; transform: scale(0.94); }
+  50%      { opacity: 1;    transform: scale(1.04); }
+}
+
+/* --- Animated aurora behind the auth screen (layered depth) --- */
+.auth-screen { overflow: hidden; }
+
+.auth-screen::before,
+.auth-screen::after {
+  content: "";
+  position: absolute;
+  width: 46vmax;
+  height: 46vmax;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: 0;
+  will-change: transform;
+}
+
+.auth-screen::before {
+  background: radial-gradient(circle, var(--primary) 0%, transparent 65%);
+  top: -12vmax;
+  left: -10vmax;
+  animation: aurora-a 22s ease-in-out infinite;
+}
+
+.auth-screen::after {
+  background: radial-gradient(circle, var(--accent) 0%, transparent 65%);
+  bottom: -14vmax;
+  right: -12vmax;
+  animation: aurora-b 26s ease-in-out infinite;
+}
+
+.auth-container { position: relative; z-index: 1; }
+
+@keyframes aurora-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50%      { transform: translate3d(8vmax, 6vmax, 0) scale(1.15); }
+}
+@keyframes aurora-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.1); }
+  50%      { transform: translate3d(-7vmax, -5vmax, 0) scale(1); }
+}
+
+/* --- Split-wordmark clip masks (per-word reveal) --- */
+.auth-logo h1 .word-mask {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: top;
+}
+.auth-logo h1 .word-inner {
+  display: inline-block;
+  will-change: transform;
+}
+
+/* --- Sliding nav indicator (tracks the active item) --- */
+.nav-links { position: relative; }
+.nav-indicator {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, var(--primary), var(--accent));
+  box-shadow: 0 0 12px var(--primary-glow);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* --- Card depth: pointer-tracked glow (works with JS tilt) --- */
+.tilt-card {
+  transform-style: preserve-3d;
+  transition: box-shadow 0.4s var(--ease-out, ease), border-color 0.4s ease;
+  will-change: transform;
+}
+.tilt-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(240px circle at var(--mx, 50%) var(--my, 50%),
+      rgba(255, 255, 255, 0.14), transparent 60%);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+.tilt-card:hover {
+  box-shadow: var(--hover-shadow);
+  border-color: var(--primary-glow);
+}
+.tilt-card:hover::after { opacity: 1; }
+
+/* --- Ripple ink for tactile button feedback --- */
+.btn-primary, .btn-secondary, .btn-danger, .auth-btn { position: relative; overflow: hidden; }
+.ripple-ink {
+  position: absolute;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.28;
+  transform: scale(0);
+  pointer-events: none;
+  animation: ripple 0.6s var(--ease-out, ease-out) forwards;
+}
+@keyframes ripple { to { transform: scale(1); opacity: 0; } }
+
+/* --- Primary button: animated sheen + arrow drift on hover --- */
+.btn-primary { transition: transform 0.3s var(--ease-spring, ease), box-shadow 0.3s ease, background 0.3s ease; }
+.btn-primary:hover { box-shadow: 0 10px 30px var(--primary-glow); }
+.btn-primary:active { transform: scale(0.97); }
+.btn-primary i { transition: transform 0.35s var(--ease-spring, ease); }
+.btn-primary:hover i { transform: translateX(3px); }
+
+/* --- Nav link micro-interaction --- */
+.nav-links li a { transition: color 0.25s ease, transform 0.25s var(--ease-out, ease); }
+.nav-links li:hover a { transform: translateX(3px); }
+
+/* --- Respect reduced motion: kill non-essential movement everywhere --- */
+@media (prefers-reduced-motion: reduce) {
+  #preloader .preloader-mark,
+  .auth-screen::before,
+  .auth-screen::after { animation: none !important; }
+  .tilt-card, .btn-primary, .btn-primary i, .nav-links li a, .ripple-ink { transition: none !important; }
+  .ripple-ink { display: none !important; }
+  *, *::before, *::after { scroll-behavior: auto !important; }
 }

@@ -279,13 +279,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const greetingText = document.getElementById('greeting-text');
 
     const showDashboard = () => {
-        authScreen.classList.add('hidden');
+        const wasAuth = !authScreen.classList.contains('hidden');
         dashboardEl.classList.remove('hidden');
         const username = AuthManager.getUsername();
         if (username) greetingText.textContent = `Welcome back, ${username}. Track your wealth growth securely.`;
         InvestmentStorage.backupNow(); // snapshot last-good state at the start of the session
         updateDashboard();
         fetchGoldPrice().then(() => updateDashboard()); // refresh after gold update
+        // Cinematic unlock (auth recedes, dashboard rises) or a plain entrance.
+        if (window.Motion && wasAuth) {
+            Motion.unlock(() => authScreen.classList.add('hidden'));
+        } else {
+            authScreen.classList.add('hidden');
+            if (window.Motion) Motion.enter('dashboard');
+        }
     };
 
     const showAuth = () => {
@@ -298,6 +305,7 @@ document.addEventListener('DOMContentLoaded', () => {
             loginForm.classList.add('hidden');
             registerForm.classList.remove('hidden');
         }
+        if (window.Motion) Motion.enter('auth');
     };
 
     // Restore the session on load. With encryption on, the derived key is
@@ -346,6 +354,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (pageId === 'page-dashboard') updateDashboard();
         if (pageId === 'page-investments') renderAllInvestments();
         if (pageId === 'page-settings') updateRecoveryStatus();
+        if (window.Motion) Motion.pageTransition(pageId);
     };
 
     navItems.forEach(li => {
@@ -775,10 +784,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // ===================== DASHBOARD RENDER =====================
     const updateDashboard = () => {
         const kpis = InvestmentStorage.getKPIs();
-        kpiInvested.textContent = formatCurrency(kpis.totalInvested);
-        kpiMaturity.textContent = formatCurrency(kpis.totalMaturity);
-        const rFmt = kpis.returnsPercentage.toFixed(2) + '%';
-        kpiReturns.textContent = (kpis.returnsPercentage > 0 ? '+' : '') + rFmt;
+        // Count-up when motion is on (tweens from the last shown value, so edits
+        // animate the delta); falls back to a plain set otherwise.
+        const fmtPct = (v) => (v > 0 ? '+' : '') + v.toFixed(2) + '%';
+        const setKpi = (el, val, fmt) => window.Motion ? Motion.countUp(el, val, fmt) : (el.textContent = fmt(val));
+        setKpi(kpiInvested, kpis.totalInvested, formatCurrency);
+        setKpi(kpiMaturity, kpis.totalMaturity, formatCurrency);
+        setKpi(kpiReturns, kpis.returnsPercentage, fmtPct);
         kpiReturns.className = 'kpi-value ' + (kpis.returnsPercentage >= 0 ? 'positive' : 'negative');
 
         // Show/hide gold banner
@@ -802,6 +814,7 @@ document.addEventListener('DOMContentLoaded', () => {
             emptyState.classList.add('hidden');
             tableContainer.classList.remove('hidden');
             investments.slice(0, 5).forEach(inv => tbody.appendChild(buildRow(inv)));
+            if (window.Motion) Motion.revealChildren(tbody);
         }
     };
 
@@ -829,6 +842,7 @@ document.addEventListener('DOMContentLoaded', () => {
             allEmpty.classList.add('hidden');
             allTable.classList.remove('hidden');
             investments.forEach(inv => allTbody.appendChild(buildRow(inv)));
+            if (window.Motion) Motion.revealChildren(allTbody);
         }
     };
 
