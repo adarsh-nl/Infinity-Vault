@@ -121,11 +121,16 @@ Infinity Vault/
 
 ### External Dependencies (CDN only)
 
-| Dependency | Purpose | CDN |
-|-----------|---------|-----|
-| [Chart.js](https://www.chartjs.org/) | Data visualizations | jsdelivr |
-| [Phosphor Icons](https://phosphoricons.com/) | Icon set | unpkg |
-| [Google Fonts](https://fonts.google.com/) | Inter + Outfit typography | Google |
+| Dependency | Purpose | CDN | Pinned |
+|-----------|---------|-----|--------|
+| [Chart.js](https://www.chartjs.org/) | Data visualizations | jsdelivr | `4.5.1` + SRI |
+| [Phosphor Icons](https://phosphoricons.com/) | Icon set | unpkg / jsdelivr | `2.1.2` + SRI |
+| [Google Fonts](https://fonts.google.com/) | Inter + Outfit typography | Google | — |
+
+CDN scripts are **pinned to exact versions with Subresource Integrity** hashes,
+so a tampered file is rejected by the browser. A **Content-Security-Policy**
+`<meta>` in `index.html` restricts every origin the page may load from and
+forbids inline/`eval` script — defense-in-depth behind the render-time escaping.
 
 No `npm install`, no `node_modules`, no build step.
 

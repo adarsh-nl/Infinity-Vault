@@ -4,15 +4,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!--
+      Content Security Policy — locks the origins the page may load from.
+      script-src has no 'unsafe-inline'/'unsafe-eval', so injected markup can never
+      run script (defense-in-depth behind the buildRow escaping). The allow-listed
+      hosts are exactly what the app needs:
+        jsdelivr  → Chart.js + Phosphor icon CSS/fonts   unpkg → Phosphor loader
+        Google Fonts (googleapis=CSS, gstatic=fonts)     gold-api/er-api → price fetch
+      style-src keeps 'unsafe-inline' because the UI uses inline style attributes.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="
+        default-src 'self';
+        script-src 'self' https://cdn.jsdelivr.net https://unpkg.com;
+        style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net;
+        font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net;
+        img-src 'self' data:;
+        connect-src 'self' https://api.gold-api.com https://open.er-api.com;
+        object-src 'none';
+        base-uri 'self';
+        form-action 'self';
+    ">
     <title>Infinity Vault | Premium Investment Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;800&display=swap"
         rel="stylesheet">
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Pinned + Subresource Integrity: a tampered CDN file will be rejected by the browser. -->
+    <script src="https://unpkg.com/@phosphor-icons/web@2.1.2"
+        integrity="sha384-J7cw2fbG1T4C5MirTVUxsZGaMfw2m0XsCgOQEqUvB1OF9VIsHWuZF1GmyVRzs7eu"
+        crossorigin="anonymous"></script>
     <link rel="stylesheet" href="styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"
+        integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ"
+        crossorigin="anonymous" defer></script>
     <script src="finance.js" defer></script>
     <script src="crypto.js" defer></script>
     <script src="auth.js" defer></script>
