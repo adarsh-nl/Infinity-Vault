@@ -20,6 +20,31 @@ class DashboardCharts {
         this.initCharts();
     }
 
+    /**
+     * Create a chart on first call, otherwise mutate its data + options in place
+     * and animate to the new state. Reusing the instance (instead of
+     * destroy + `new Chart`) is far cheaper and removes the flicker that hit on
+     * every dashboard render and theme toggle. Chart type is fixed per canvas.
+     */
+    _upsert(key, ctx, config) {
+        const chart = this[key];
+        if (chart) {
+            chart.data = config.data;
+            chart.options = config.options;
+            chart.update();
+        } else {
+            this[key] = new Chart(ctx, config);
+        }
+    }
+
+    /** Tear a chart down (used for empty states so no stale canvas lingers). */
+    _clear(key) {
+        if (this[key]) {
+            this[key].destroy();
+            this[key] = null;
+        }
+    }
+
     getThemeColors() {
         const isDark = document.body.classList.contains('dark-theme');
         return {
@@ -51,8 +76,7 @@ class DashboardCharts {
         const { textBright } = this.getThemeColors();
         const palette = ['#818cf8', '#34d399', '#fbbf24', '#f87171', '#a78bfa', '#22d3ee', '#f472b6', '#fb923c'];
 
-        if (this.diversificationChart) this.diversificationChart.destroy();
-        this.diversificationChart = new Chart(ctx, {
+        this._upsert('diversificationChart', ctx, {
             type: 'doughnut',
             data: {
                 labels: labels.length ? labels : ['No Data'],
@@ -82,8 +106,7 @@ class DashboardCharts {
         const kpis = InvestmentStorage.getKPIs();
         const { text, grid } = this.getThemeColors();
 
-        if (this.projectionChart) this.projectionChart.destroy();
-        this.projectionChart = new Chart(ctx, {
+        this._upsert('projectionChart', ctx, {
             type: 'bar',
             data: {
                 labels: ['Total Invested', 'Maturity / Current'],
@@ -129,13 +152,13 @@ class DashboardCharts {
         const barHeight = Math.max(200, labels.length * 36);
         ctx.parentElement.style.height = barHeight + 'px';
 
-        if (this.returnsChart) this.returnsChart.destroy();
         if (labels.length === 0) {
+            this._clear('returnsChart');
             ctx.parentElement.style.height = '200px';
             return;
         }
 
-        this.returnsChart = new Chart(ctx, {
+        this._upsert('returnsChart', ctx, {
             type: 'bar',
             data: {
                 labels,
@@ -170,10 +193,12 @@ class DashboardCharts {
         const maturity = labels.map(t => typeMap[t].maturity);
         const { text, grid } = this.getThemeColors();
 
-        if (this.typePerformanceChart) this.typePerformanceChart.destroy();
-        if (labels.length === 0) return;
+        if (labels.length === 0) {
+            this._clear('typePerformanceChart');
+            return;
+        }
 
-        this.typePerformanceChart = new Chart(ctx, {
+        this._upsert('typePerformanceChart', ctx, {
             type: 'bar',
             data: {
                 labels,
@@ -203,7 +228,7 @@ class DashboardCharts {
 
         const investments = InvestmentStorage.getInvestments();
         if (investments.length === 0) {
-            if (this.timelineChart) this.timelineChart.destroy();
+            this._clear('timelineChart');
             return;
         }
 
@@ -229,8 +254,7 @@ class DashboardCharts {
 
         const { text, grid } = this.getThemeColors();
 
-        if (this.timelineChart) this.timelineChart.destroy();
-        this.timelineChart = new Chart(ctx, {
+        this._upsert('timelineChart', ctx, {
             type: 'line',
             data: {
                 labels,
