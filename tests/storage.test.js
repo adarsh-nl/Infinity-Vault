@@ -100,6 +100,48 @@ describe('updateInvestment', () => {
     });
 });
 
+describe('validate', () => {
+    const validFD = { name: 'HDFC FD', type: 'Fixed Deposit', amount: 100000, maturity: 107186, date: '2025-01-01', interestRate: 7, tenureDays: 365 };
+
+    it('accepts a well-formed record', () => {
+        expect(InvestmentStorage.validate(validFD)).toEqual([]);
+    });
+
+    it('rejects a zero or missing invested amount', () => {
+        expect(InvestmentStorage.validate({ ...validFD, amount: 0 }).join(' ')).toMatch(/greater than ₹0/);
+    });
+
+    it('rejects a maturity date on or before the start date (tenureDays <= 0)', () => {
+        expect(InvestmentStorage.validate({ ...validFD, tenureDays: -5 }).join(' ')).toMatch(/maturity date must be after/i);
+        expect(InvestmentStorage.validate({ ...validFD, tenureDays: 0 }).join(' ')).toMatch(/maturity date must be after/i);
+    });
+
+    it('rejects an out-of-range interest rate', () => {
+        expect(InvestmentStorage.validate({ ...validFD, interestRate: 150 }).join(' ')).toMatch(/between 0% and 100%/);
+        expect(InvestmentStorage.validate({ ...validFD, interestRate: -1 }).join(' ')).toMatch(/between 0% and 100%/);
+    });
+
+    it('rejects typo-scale amounts', () => {
+        expect(InvestmentStorage.validate({ ...validFD, amount: 5e12 }).join(' ')).toMatch(/too large/);
+    });
+
+    it('requires a name and a date', () => {
+        expect(InvestmentStorage.validate({ ...validFD, name: '   ' }).join(' ')).toMatch(/name/);
+        expect(InvestmentStorage.validate({ ...validFD, date: '' }).join(' ')).toMatch(/start date/);
+    });
+
+    it('checks SIP-specific fields', () => {
+        const sip = { name: 'SIP', type: 'SIP', amount: 12000, maturity: 12800, date: '2025-01-01', sipMonthly: 0, sipDuration: 12, sipRate: 12 };
+        expect(InvestmentStorage.validate(sip).join(' ')).toMatch(/Monthly amount must be greater/);
+        expect(InvestmentStorage.validate({ ...sip, sipMonthly: 1000, sipDuration: 0 }).join(' ')).toMatch(/at least 1 month/);
+    });
+
+    it('checks Gold-specific fields', () => {
+        const gold = { name: 'Gold', type: 'Gold', amount: 60000, maturity: 65000, date: '2025-01-01', goldWeight: 0, goldPurchasePrice: 6000 };
+        expect(InvestmentStorage.validate(gold).join(' ')).toMatch(/Weight must be greater/);
+    });
+});
+
 describe('getKPIs', () => {
     it('aggregates totals and weighted annualized return', () => {
         InvestmentStorage.saveInvestments([

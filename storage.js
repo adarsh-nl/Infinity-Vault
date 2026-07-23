@@ -197,6 +197,42 @@ class InvestmentStorage {
             }));
     }
 
+    /**
+     * Validate an investment record built from the form. Returns an array of
+     * human-readable error strings (empty === valid). Pure and DOM-free so it can
+     * be unit-tested; it catches the semantic problems the HTML min/required
+     * attributes cannot — zero amounts, out-of-range rates, a maturity date on or
+     * before the start date, and typo-scale values.
+     */
+    static validate(inv) {
+        const MAX_AMOUNT = 1e12;   // ₹1 trillion — far beyond any individual holding
+        const MAX_RATE = 100;      // % p.a.
+        const errors = [];
+        const amount = Number(inv.amount) || 0;
+        const maturity = Number(inv.maturity) || 0;
+
+        if (!String(inv.name || '').trim()) errors.push('Please enter an investment name.');
+        if (!inv.date) errors.push('Please choose a start date.');
+        if (!(amount > 0)) errors.push('The invested amount must be greater than ₹0.');
+        if (maturity < 0) errors.push('The value cannot be negative.');
+        if (amount > MAX_AMOUNT || maturity > MAX_AMOUNT) errors.push('That amount looks too large — please double-check it.');
+
+        if (inv.type === 'Fixed Deposit') {
+            const r = Number(inv.interestRate);
+            if (!(r >= 0 && r <= MAX_RATE)) errors.push('Interest rate must be between 0% and 100%.');
+            if (!(Number(inv.tenureDays) > 0)) errors.push('The maturity date must be after the start date.');
+        } else if (inv.type === 'SIP') {
+            if (!(Number(inv.sipMonthly) > 0)) errors.push('Monthly amount must be greater than ₹0.');
+            if (!(Number(inv.sipDuration) >= 1)) errors.push('Duration must be at least 1 month.');
+            const r = Number(inv.sipRate);
+            if (!(r >= 0 && r <= MAX_RATE)) errors.push('Expected return must be between 0% and 100%.');
+        } else if (inv.type === 'Gold') {
+            if (!(Number(inv.goldWeight) > 0)) errors.push('Weight must be greater than 0 grams.');
+            if (!(Number(inv.goldPurchasePrice) > 0)) errors.push('Purchase price must be greater than ₹0.');
+        }
+        return errors;
+    }
+
     // ---- backups -----------------------------------------------------------
     /**
      * Best-effort snapshot of the raw stored bytes (ciphertext or plaintext) to a

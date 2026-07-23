@@ -781,6 +781,18 @@ select:focus {
   border-top: 1px solid var(--border-color);
 }
 
+/* MODAL INLINE ERROR */
+.modal-error {
+  margin-top: 1.25rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.6rem;
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid var(--danger);
+}
+
 /* CONFIRM DIALOG */
 .confirm-dialog {
   max-width: 420px;

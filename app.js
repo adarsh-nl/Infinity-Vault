@@ -58,6 +58,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    // Inline validation feedback inside the investment modal.
+    const showModalError = (msg) => {
+        const el = document.getElementById('modal-error');
+        el.textContent = msg;
+        el.classList.remove('hidden');
+    };
+    const clearModalError = () => document.getElementById('modal-error').classList.add('hidden');
+
     // ===================== GOLD PRICE MANAGER =====================
     const GOLD_CACHE_KEY = 'infinity_vault_gold_cache';
     let liveGoldPricePerGram = null;
@@ -327,7 +335,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    invTypeSelect.addEventListener('change', updateFieldVisibility);
+    invTypeSelect.addEventListener('change', () => { updateFieldVisibility(); clearModalError(); });
 
     // ===================== LIVE PREVIEWS =====================
     const updateFDPreview = () => {
@@ -393,6 +401,7 @@ document.addEventListener('DOMContentLoaded', () => {
         editingId = null;
         modalTitle.textContent = 'Add New Investment';
         modalSubmitBtn.textContent = 'Save Investment';
+        clearModalError();
         modal.classList.remove('hidden');
         updateFieldVisibility();
         updateGoldPreview();
@@ -401,6 +410,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Open the modal pre-filled with an existing investment for editing.
     const openEditModal = (inv) => {
         form.reset();
+        clearModalError();
         editingId = inv.id;
         modalTitle.textContent = 'Edit Investment';
         modalSubmitBtn.textContent = 'Save Changes';
@@ -453,6 +463,7 @@ document.addEventListener('DOMContentLoaded', () => {
         goldInvestedDisplay.textContent = '₹ —'; goldLiveDisplay.textContent = '₹ — (fetching...)';
         currentProofBase64 = null;
         proofPreviewContainer.classList.add('hidden');
+        clearModalError();
     };
     addInvestmentBtn.addEventListener('click', openModal);
     closeModalBtn.addEventListener('click', closeModal);
@@ -536,6 +547,12 @@ document.addEventListener('DOMContentLoaded', () => {
             goldWeight: goldWeightVal, goldPurchasePrice: goldPurchasePriceVal,
             proof: currentProofBase64
         };
+
+        // Semantic validation beyond the HTML min/required checks (e.g. amount > 0,
+        // maturity date after start date). Show the first problem and stop.
+        const errors = InvestmentStorage.validate(record);
+        if (errors.length) { showModalError(errors[0]); return; }
+        clearModalError();
 
         if (editingId) {
             record.id = editingId;
