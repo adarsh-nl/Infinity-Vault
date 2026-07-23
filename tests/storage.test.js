@@ -16,6 +16,7 @@ function makeLocalStorage() {
 beforeEach(() => {
     globalThis.Finance = Finance;
     globalThis.localStorage = makeLocalStorage();
+    InvestmentStorage.lock(); // reset module-scoped cache/key between tests
 });
 
 describe('normalizeImported — untrusted backup hardening', () => {
@@ -44,7 +45,7 @@ describe('normalizeImported — untrusted backup hardening', () => {
 });
 
 describe('backup / restore', () => {
-    it('round-trips through an accidental clear', () => {
+    it('round-trips through an accidental clear', async () => {
         InvestmentStorage.saveInvestments([
             { id: '1', name: 'FD', type: 'Fixed Deposit', amount: 1000, maturity: 1100, date: '2025-01-01' },
         ]);
@@ -52,7 +53,7 @@ describe('backup / restore', () => {
         InvestmentStorage.saveInvestments([]); // simulate a mistaken "Clear All"
         expect(InvestmentStorage.getInvestments()).toHaveLength(0);
 
-        const restored = InvestmentStorage.restoreBackup();
+        const restored = await InvestmentStorage.restoreBackup();
         expect(restored.count).toBe(1);
         expect(InvestmentStorage.getInvestments()).toHaveLength(1);
         expect(InvestmentStorage.getInvestments()[0].amount).toBe(1000);

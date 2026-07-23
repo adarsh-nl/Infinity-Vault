@@ -1,31 +1,145 @@
 const STORAGE_KEY = 'infinity_vault_investments';
 const BACKUP_KEY = 'infinity_vault_backup_latest';
 
+// ---- session state (module-scoped) -----------------------------------------
+// The vault is decrypted once at unlock into `_cache`, which is the synchronous
+// source of truth for the whole app. This lets getInvestments() stay sync (Web
+// Crypto is async and rewiring every call site would be far riskier). At rest,
+// data is always AES-GCM ciphertext keyed by the login password.
+let _cache = null;                 // decrypted investments; null = not loaded into memory
+let _key = null;                   // AES-GCM CryptoKey; null = plaintext mode (crypto unsupported / legacy)
+let _persist = Promise.resolve();  // serializes async encrypted writes so they never race
+
+// Safe even when crypto.js isn't loaded (e.g. a pure-logic test context).
+function _looksEncrypted(v) {
+    return typeof VaultCrypto !== 'undefined' && VaultCrypto.isEncryptedBlob(v);
+}
+
 class InvestmentStorage {
+    // ---- session lifecycle -------------------------------------------------
+    /** True once a session key is active (encrypted mode). */
+    static hasKey() { return _key !== null; }
+
+    /** Decrypt the vault into memory with `key`. Throws if the key is wrong. */
+    static async unlock(key) {
+        _key = key;
+        _cache = await this._loadFrom(key);
+        return _cache;
+    }
+
+    /** Re-derive the in-memory cache from disk using the active key. */
+    static async reload() {
+        _cache = await this._loadFrom(_key);
+        return _cache;
+    }
+
+    static async _loadFrom(key) {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return [];
+        let parsed;
+        try { parsed = JSON.parse(raw); } catch { return []; }
+
+        if (_looksEncrypted(parsed)) {
+            if (!key) return [];                                   // locked — cannot read
+            const data = await VaultCrypto.decryptJSON(key, parsed); // throws on wrong key
+            return Array.isArray(data) ? data : [];
+        }
+
+        // Plaintext on disk. If we hold a key, migrate it to ciphertext in place.
+        const arr = Array.isArray(parsed) ? parsed : [];
+        if (key) await this._writeEncrypted(arr, key);
+        return arr;
+    }
+
+    /**
+     * Turn on encryption with `key` and (re-)encrypt `investments`. Used at
+     * registration, legacy migration, and password change (new key → re-encrypt).
+     */
+    static async enableEncryption(key, investments) {
+        _key = key;
+        _cache = Array.isArray(investments) ? investments : [];
+        await this._writeEncrypted(_cache, key);
+        // A backup encrypted under a prior key is no longer readable — drop it.
+        localStorage.removeItem(BACKUP_KEY);
+        return _cache;
+    }
+
+    /** Forget the key and plaintext cache (logout / tab close). */
+    static lock() {
+        _cache = null;
+        _key = null;
+        _persist = Promise.resolve();
+    }
+
+    static async _writeEncrypted(investments, key) {
+        const blob = await VaultCrypto.encryptJSON(key || _key, investments);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(blob));
+    }
+
+    // ---- reads -------------------------------------------------------------
+    static _sanitize(investments) {
+        // Coerce numeric values on read so downstream math is never fed strings.
+        return investments.map(inv => ({
+            ...inv,
+            amount: parseFloat(inv.amount) || 0,
+            maturity: parseFloat(inv.maturity) || 0,
+            interestRate: inv.interestRate != null ? parseFloat(inv.interestRate) : null,
+            tenureDays: inv.tenureDays != null ? parseInt(inv.tenureDays, 10) : null,
+            goldWeight: inv.goldWeight != null ? parseFloat(inv.goldWeight) : null,
+            goldPurchasePrice: inv.goldPurchasePrice != null ? parseFloat(inv.goldPurchasePrice) : null,
+            proof: inv.proof || null
+        }));
+    }
+
     static getInvestments() {
-        const data = localStorage.getItem(STORAGE_KEY);
-        if (!data) return [];
+        if (_cache !== null) return this._sanitize(_cache);
+        // Not unlocked into memory — read whatever is on disk (plaintext / legacy).
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return [];
         try {
-            const investments = JSON.parse(data);
-            // Sanitize numeric values on read
-            return investments.map(inv => ({
-                ...inv,
-                amount: parseFloat(inv.amount) || 0,
-                maturity: parseFloat(inv.maturity) || 0,
-                interestRate: inv.interestRate != null ? parseFloat(inv.interestRate) : null,
-                tenureDays: inv.tenureDays != null ? parseInt(inv.tenureDays, 10) : null,
-                goldWeight: inv.goldWeight != null ? parseFloat(inv.goldWeight) : null,
-                goldPurchasePrice: inv.goldPurchasePrice != null ? parseFloat(inv.goldPurchasePrice) : null,
-                proof: inv.proof || null
-            }));
+            const parsed = JSON.parse(raw);
+            if (_looksEncrypted(parsed)) return []; // locked: unreadable without a key
+            return this._sanitize(Array.isArray(parsed) ? parsed : []);
         } catch (e) {
             console.error('Failed to parse investments', e);
             return [];
         }
     }
 
+    // ---- writes ------------------------------------------------------------
     static saveInvestments(investments) {
+        _cache = investments; // in-memory truth updates synchronously
+        if (_key) {
+            // Encrypt-and-write off the critical path, serialized to avoid races.
+            _persist = _persist
+                .then(() => this._writeEncrypted(investments, _key))
+                .catch(e => console.error('Encrypted save failed', e));
+            return _persist;
+        }
         localStorage.setItem(STORAGE_KEY, JSON.stringify(investments));
+        return Promise.resolve();
+    }
+
+    static addInvestment(investment) {
+        const investments = this.getInvestments();
+        investment.id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+
+        // Convert string amounts to numbers safely
+        investment.amount = parseFloat(investment.amount);
+        investment.maturity = parseFloat(investment.maturity);
+
+        investments.push(investment);
+
+        // Sort by date descending
+        investments.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        this.saveInvestments(investments);
+        return investment;
+    }
+
+    static deleteInvestment(id) {
+        const investments = this.getInvestments().filter(inv => inv.id !== id);
+        this.saveInvestments(investments);
     }
 
     /**
@@ -60,39 +174,28 @@ class InvestmentStorage {
             }));
     }
 
-    static addInvestment(investment) {
-        const investments = this.getInvestments();
-        investment.id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
-
-        // Convert string amounts to numbers safely
-        investment.amount = parseFloat(investment.amount);
-        investment.maturity = parseFloat(investment.maturity);
-
-        investments.push(investment);
-
-        // Sort by date descending
-        investments.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-        this.saveInvestments(investments);
-        return investment;
-    }
-
+    // ---- backups -----------------------------------------------------------
     /**
-     * Best-effort snapshot of the current data to a single rolling backup key.
-     * Called before destructive actions (import, clear) and on app load, so an
-     * accidental wipe or bad import is recoverable. Never throws: a quota error
-     * here must not block the primary save.
+     * Best-effort snapshot of the raw stored bytes (ciphertext or plaintext) to a
+     * single rolling backup key. Called before destructive actions and on load so
+     * an accidental wipe or bad import is recoverable. Never throws.
      */
     static backupNow() {
         try {
             const raw = localStorage.getItem(STORAGE_KEY);
             if (!raw) return false;
-            const parsed = JSON.parse(raw);
-            if (!Array.isArray(parsed) || parsed.length === 0) return false;
+            let count;
+            if (_cache !== null) {
+                count = _cache.length;
+            } else {
+                const parsed = JSON.parse(raw);
+                count = Array.isArray(parsed) ? parsed.length : null;
+            }
+            if (count === 0) return false; // don't clobber a good backup with nothing
             localStorage.setItem(BACKUP_KEY, JSON.stringify({
                 timestamp: new Date().toISOString(),
-                count: parsed.length,
-                data: parsed
+                count,
+                blob: raw // stored exactly as-is: encrypted stays encrypted
             }));
             return true;
         } catch (e) {
@@ -101,29 +204,27 @@ class InvestmentStorage {
         }
     }
 
-    /** Return the latest backup { timestamp, count, data } or null. */
+    /** Return the latest backup metadata, or null. */
     static getBackup() {
         try {
             const b = JSON.parse(localStorage.getItem(BACKUP_KEY));
-            if (b && Array.isArray(b.data)) return b;
+            if (b && (typeof b.blob === 'string' || Array.isArray(b.data))) return b;
         } catch { }
         return null;
     }
 
-    /** Restore the latest backup over current data. Returns the backup, or null. */
-    static restoreBackup() {
+    /** Restore the latest backup over current data, refreshing the cache. */
+    static async restoreBackup() {
         const b = this.getBackup();
         if (!b) return null;
-        this.saveInvestments(b.data);
+        // `blob` is the new format; `data` supports backups written by an earlier version.
+        const raw = typeof b.blob === 'string' ? b.blob : JSON.stringify(b.data || []);
+        localStorage.setItem(STORAGE_KEY, raw);
+        if (_key || _cache !== null) await this.reload(); // re-encrypts if the blob was plaintext
         return b;
     }
 
-    static deleteInvestment(id) {
-        let investments = this.getInvestments();
-        investments = investments.filter(inv => inv.id !== id);
-        this.saveInvestments(investments);
-    }
-
+    // ---- derived data ------------------------------------------------------
     static getKPIs() {
         const investments = this.getInvestments();
         const now = new Date();

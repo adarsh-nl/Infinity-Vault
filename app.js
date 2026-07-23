@@ -155,8 +155,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    if (AuthManager.isLoggedIn()) showDashboard();
-    else showAuth();
+    // Restore the session on load. With encryption on, the derived key is
+    // re-imported from sessionStorage and the vault decrypted before we render.
+    (async () => {
+        if (AuthManager.isLoggedIn() && await AuthManager.resume()) {
+            showDashboard();
+        } else {
+            AuthManager.logout(); // clear a stale flag we can't honor (e.g. no key)
+            showAuth();
+        }
+    })();
 
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -638,7 +646,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const restoreBackupBtn = document.getElementById('restore-backup-btn');
     if (restoreBackupBtn) {
-        restoreBackupBtn.addEventListener('click', () => {
+        restoreBackupBtn.addEventListener('click', async () => {
             const backup = InvestmentStorage.getBackup();
             if (!backup) {
                 showMsg(document.getElementById('data-msg'), 'No backup available yet.', 'error');
@@ -646,7 +654,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const when = new Date(backup.timestamp).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
             if (confirm(`Restore ${backup.count} investment(s) from the backup saved on ${when}? This replaces current data.`)) {
-                InvestmentStorage.restoreBackup();
+                await InvestmentStorage.restoreBackup();
                 updateDashboard(); renderAllInvestments();
                 showMsg(document.getElementById('data-msg'), `Restored ${backup.count} investments from backup.`, 'success');
             }

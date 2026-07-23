@@ -10,10 +10,12 @@ A lightweight, privacy-first investment tracker built entirely with vanilla HTML
 
 ## ✨ Features
 
-### 🔐 Client-Side Authentication
+### 🔐 Encrypted Local Vault
 - Username + password login system
-- Passwords hashed with **SHA-256** via the [Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/digest) before storing — never saved in plaintext
-- Session tracked via `sessionStorage` — **auto-locks** when you close the tab
+- Your password is stretched with **PBKDF2-SHA256** (210k iterations) into a 256-bit key that **encrypts your investment data with AES-GCM** — data at rest, exports, and backups are all ciphertext
+- The password itself is **never stored**; login is verified by decrypting a small token, so a wrong password simply fails to decrypt
+- Session key is held in memory and mirrored into `sessionStorage`, so a reload stays unlocked but closing the tab **auto-locks** the vault
+- Existing (pre-encryption) accounts are **migrated automatically and losslessly** on first login
 - First visit = registration, subsequent visits = login
 
 ### 📊 Rich Dashboard with 5 Visualizations
@@ -88,18 +90,25 @@ Annualized Return % = ((Maturity - Invested) / Invested) × 100 × (365 / days)
 Infinity Vault/
 ├── index.html      # Single-page app with 3 routable pages
 ├── styles.css      # Full design system with CSS variables
-├── auth.js         # SHA-256 hashing, login/register/session
-├── storage.js      # LocalStorage CRUD, KPI calculations
+├── finance.js      # Pure financial math (FD/SIP/returns) — unit-tested
+├── crypto.js       # PBKDF2 key derivation + AES-GCM encrypt/decrypt
+├── auth.js         # Register/login/session, verifier, legacy migration
+├── storage.js      # Encrypted vault, CRUD, backups, KPIs — unit-tested
 ├── charts.js       # 5 Chart.js visualizations
-└── app.js          # Main controller: auth flow, navigation,
-                    # form logic, gold API, settings
+├── app.js          # Main controller: auth flow, navigation,
+│                   # form logic, gold API, settings
+└── tests/          # Vitest suites (dev-only; runtime stays zero-build)
 ```
+
+> The **app** still runs with zero build — just open it. `finance.js`, `crypto.js`,
+> and `storage.js` double as importable modules so the logic can be unit-tested
+> (`npm test`); see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### How It Works
 
 1. **Data Storage** — All data lives in browser `localStorage`. No server, no database. Your data never leaves your browser.
 
-2. **Authentication** — Credentials are hashed with SHA-256 and stored in `localStorage`. The session flag is stored in `sessionStorage`, which clears automatically when the tab closes.
+2. **Authentication & encryption** — A key is derived from your password with PBKDF2-SHA256 and used to AES-GCM–encrypt the investment blob before it is written to `localStorage`. Only a random salt, the iteration count, and a decryptable verifier token are stored — never the password. The derived key is mirrored into `sessionStorage` for the active tab and cleared when the tab closes.
 
 3. **Gold Price Fetching** — On page load, the app makes two API calls:
    - `gold-api.com` for live gold price in USD per troy ounce
@@ -169,7 +178,24 @@ python3 -m http.server 8000
 
 ## 🔒 Security Note
 
-This app uses **client-side authentication** with SHA-256 hashing. It is designed for **personal use on your own machine** to prevent casual access. It is **not** a substitute for server-side authentication. Do not rely on it for sensitive financial data over shared or public networks.
+Infinity Vault is **local-first**: your data lives only in your browser and is
+**encrypted at rest** with a key derived from your password (PBKDF2-SHA256 →
+AES-GCM). Anyone who obtains your `localStorage`, an exported backup, or the disk
+profile cannot read your portfolio without the password.
+
+Honest limits of the model:
+
+- **While a tab is unlocked**, the session key sits in `sessionStorage` and the
+  decrypted data is in memory — same-origin scripts on the page can read it.
+  This is inherent to any in-browser app; it is why the XSS hardening matters.
+- There is **no password recovery.** If you forget it, the data is unrecoverable
+  by design — keep an exported backup somewhere safe.
+- Encryption requires a **secure context** (`https://`, `localhost`, or a local
+  file). Over plain `http://` on a shared host, the app falls back to an
+  unencrypted profile lock — don't use it for sensitive data there.
+
+It remains a personal tool, not a substitute for a server-side, multi-user
+system with recovery and audit controls.
 
 ---
 
