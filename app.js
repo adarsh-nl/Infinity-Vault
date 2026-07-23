@@ -19,17 +19,9 @@ document.addEventListener('DOMContentLoaded', () => {
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     }[c]));
 
-    const calculateFDMaturity = (principal, annualRate, days) => {
-        if (!principal || !annualRate || !days || days <= 0) return 0;
-        return principal * Math.pow(1 + (annualRate / 100) / 4, 4 * days / 365);
-    };
-
-    const calculateSIPMaturity = (monthly, annualRate, months) => {
-        if (!monthly || !months || months <= 0) return monthly * months;
-        const r = (annualRate / 100) / 12;
-        if (r === 0) return monthly * months;
-        return monthly * (((Math.pow(1 + r, months) - 1) / r) * (1 + r));
-    };
+    // Financial formulas live in finance.js (loaded before this script) so they
+    // can be unit-tested in isolation. Alias them for readability below.
+    const { calculateFDMaturity, calculateSIPMaturity, annualizedReturn, daysBetween } = Finance;
 
     // ===================== GOLD PRICE MANAGER =====================
     const GOLD_CACHE_KEY = 'infinity_vault_gold_cache';
@@ -296,7 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const start = invDateInput.value ? new Date(invDateInput.value) : null;
         const end = invMaturityDate.value ? new Date(invMaturityDate.value) : null;
         if (start && end && end > start) {
-            const days = Math.round((end - start) / 86400000);
+            const days = daysBetween(start, end);
             fdTenureDisplay.textContent = `${days} days`;
             fdMaturityDisplay.textContent = (principal > 0 && rate > 0) ? formatCurrency(Math.round(calculateFDMaturity(principal, rate, days))) : '₹ —';
         } else {
@@ -414,7 +406,7 @@ document.addEventListener('DOMContentLoaded', () => {
             amount = parseFloat(invAmountInput.value) || 0;
             interestRate = parseFloat(invRateInput.value) || 0;
             maturityDate = invMaturityDate.value;
-            tenureDays = Math.round((new Date(maturityDate) - new Date(invDateInput.value)) / 86400000);
+            tenureDays = daysBetween(invDateInput.value, maturityDate);
             maturity = Math.round(calculateFDMaturity(amount, interestRate, tenureDays));
         } else if (type === 'SIP') {
             sipMonthlyAmt = parseFloat(sipMonthly.value) || 0;
@@ -473,10 +465,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (amt > 0) {
             let days = inv.tenureDays;
             if (!days || days <= 0) {
-                const d = inv.date ? new Date(inv.date) : new Date();
-                days = Math.max(1, Math.round((new Date() - d) / 86400000));
+                days = Math.max(1, daysBetween(inv.date || new Date(), new Date()));
             }
-            invReturn = Math.round(((mat - amt) / amt) * 100 * (365 / days) * 100) / 100;
+            invReturn = Math.round(annualizedReturn(amt, mat, days) * 100) / 100;
         }
 
         let typeExtra = '';

@@ -143,10 +143,9 @@ class InvestmentStorage {
                 let days = inv.tenureDays;
                 if (!days || days <= 0) {
                     // For non-FD: days elapsed from investment date to today
-                    const invDate = inv.date ? new Date(inv.date) : now;
-                    days = Math.max(1, Math.round((now - invDate) / (1000 * 60 * 60 * 24)));
+                    days = Math.max(1, Finance.daysBetween(inv.date || now, now));
                 }
-                const annualized = ((mat - amt) / amt) * 100 * (365 / days);
+                const annualized = Finance.annualizedReturn(amt, mat, days);
                 // Weight by invested amount
                 weightedAnnualReturn += annualized * amt;
             }
@@ -183,4 +182,10 @@ class InvestmentStorage {
 
         return typeMap;
     }
+}
+
+// Export for the test runner (Vitest/Node). No-op in the browser, where
+// `InvestmentStorage` is already a global from this classic script.
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { InvestmentStorage };
 }
