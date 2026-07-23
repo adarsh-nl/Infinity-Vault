@@ -225,6 +225,33 @@ class AuthManager {
         return true;
     }
 
+    // ---- cloud sync support (E2EE, Phase 1) --------------------------------
+
+    /**
+     * The account envelope for upload: the non-secret key material a new device
+     * needs to reconstruct the DEK from the password. All opaque to the server.
+     */
+    static getAccountEnvelope() {
+        const a = this._readAuth();
+        if (!a || a.v !== 3) return null;
+        return { kekSalt: a.salt, kekIters: a.iterations, wrappedDEK: a.wrappedDEK, recovery: a.recovery || null };
+    }
+
+    /**
+     * Install an account restored from the cloud onto this device: write the v3
+     * envelope, drop in the (already-decrypted-capable) vault ciphertext, and
+     * unlock with the DEK the caller unwrapped from the server envelope.
+     */
+    static async installAccount(email, account, dek, ciphertext) {
+        this._writeAuth({
+            v: 3, username: String(email).trim().toLowerCase(), kdf: 'PBKDF2',
+            iterations: account.kekIters, salt: account.kekSalt,
+            wrappedDEK: account.wrappedDEK, recovery: account.recovery || null
+        });
+        InvestmentStorage.importBlob(ciphertext); // ciphertext from GET /vault (or null)
+        await this._establishSession(dek);        // stores DEK + decrypts the blob into memory
+    }
+
     // ---- session lifecycle -------------------------------------------------
 
     /** Resume an existing session after a page reload (same tab). */

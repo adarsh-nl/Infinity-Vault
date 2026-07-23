@@ -23,6 +23,15 @@ class InvestmentStorage {
     /** The active data key (DEK) for the unlocked session, or null. */
     static getKey() { return _key; }
 
+    /** The raw at-rest blob (ciphertext when encrypted) — this IS the sync payload. */
+    static exportBlob() { return localStorage.getItem(STORAGE_KEY); }
+
+    /** Replace the raw at-rest blob (e.g. a restored cloud backup); call reload() after. */
+    static importBlob(raw) {
+        if (raw == null) localStorage.removeItem(STORAGE_KEY);
+        else localStorage.setItem(STORAGE_KEY, String(raw));
+    }
+
     /** Decrypt the vault into memory with `key`. Throws if the key is wrong. */
     static async unlock(key) {
         _key = key;

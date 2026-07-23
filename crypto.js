@@ -77,6 +77,22 @@
         return subtle().generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
     }
 
+    /**
+     * Derive an authentication hash from the password — the value sent to the
+     * server to prove knowledge of the password (E2EE sync, split-derivation).
+     * MUST use a different salt from the KEK: same input, different salt ⇒
+     * independent output, so `authHash` never reveals the wrapping key. Returns
+     * base64. (See docs/design/e2ee-sync-phase1.md §4.)
+     */
+    async function deriveAuthHash(password, saltBytes, iterations) {
+        const baseKey = await subtle().importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveBits']);
+        const bits = await subtle().deriveBits(
+            { name: 'PBKDF2', salt: saltBytes, iterations: iterations || PBKDF2_ITERATIONS, hash: 'SHA-256' },
+            baseKey, 256
+        );
+        return bytesToB64(bits);
+    }
+
     /** Derive a wrapping key (KEK) from a password/recovery-key + salt. */
     async function deriveWrappingKey(secret, saltBytes, iterations) {
         const baseKey = await subtle().importKey(
@@ -154,5 +170,7 @@
         // envelope model
         generateDEK, deriveWrappingKey, wrapDEK, unwrapDEK,
         generateRecoveryKey, normalizeRecoveryKey,
+        // sync (split-derivation auth)
+        deriveAuthHash,
     };
 });
