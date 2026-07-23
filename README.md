@@ -203,7 +203,7 @@ system with recovery and audit controls.
 
 Contributions are welcome! Some ideas:
 
-- [ ] Edit existing investments (currently delete + re-add)
+- [x] ~~Edit existing investments~~ (done — pencil action on each row)
 - [ ] Multiple currency support
 - [ ] PDF report generation
 - [ ] More asset-specific calculators (PPF, NPS, etc.)
