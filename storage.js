@@ -20,6 +20,9 @@ class InvestmentStorage {
     /** True once a session key is active (encrypted mode). */
     static hasKey() { return _key !== null; }
 
+    /** The active data key (DEK) for the unlocked session, or null. */
+    static getKey() { return _key; }
+
     /** Decrypt the vault into memory with `key`. Throws if the key is wrong. */
     static async unlock(key) {
         _key = key;

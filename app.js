@@ -777,12 +777,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const current = document.getElementById('current-password').value;
         const newPass = document.getElementById('new-password').value;
         const confirmNew = document.getElementById('confirm-new-password').value;
-        const username = AuthManager.getUsername();
-        const valid = await AuthManager.login(username, current);
-        if (!valid) { showMsg(passwordMsg, 'Current password is incorrect.', 'error'); return; }
         if (newPass.length < 4) { showMsg(passwordMsg, 'New password must be at least 4 characters.', 'error'); return; }
         if (newPass !== confirmNew) { showMsg(passwordMsg, 'New passwords do not match.', 'error'); return; }
-        await AuthManager.register(username, newPass);
+        // Re-wraps the data key under the new password (no vault re-encryption,
+        // recovery key unchanged). Verifies the current password internally.
+        const ok = await AuthManager.changePassword(current, newPass);
+        if (!ok) { showMsg(passwordMsg, 'Current password is incorrect.', 'error'); return; }
         showMsg(passwordMsg, 'Password updated successfully!', 'success');
         passwordForm.reset();
     });

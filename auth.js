@@ -1,19 +1,21 @@
-// auth.js — password-based unlock for the encrypted local vault.
+// auth.js — password-based unlock for the envelope-encrypted local vault.
 //
-// The login password is stretched with PBKDF2 into the AES-GCM key that
-// encrypts the investment data (see crypto.js / storage.js). The password is
-// NEVER stored — only a random salt, the iteration count, and a small
-// "verifier" blob that the correct key can decrypt. A wrong password makes the
-// verifier's GCM check fail, so login is rejected without any password compare.
+// A random Data-Encryption Key (DEK) encrypts the vault (see crypto.js /
+// storage.js). The DEK is wrapped by a password-derived Key-Encryption Key
+// (KEK) and, once set, by a recovery key. Only the wrapped DEK is stored; the
+// password and KEK never leave the device. Login unwraps the DEK; a wrong
+// password makes the AES-GCM unwrap fail. Password change re-wraps the DEK
+// without re-encrypting the vault. Recovery unwraps the DEK via the recovery
+// key. Existing v1 (plaintext) and v2 (single password key) accounts migrate
+// to this v3 envelope on first login, losslessly.
 //
-// The derived key lives in memory for the session and is mirrored (as a JWK)
-// into sessionStorage so a page reload in the same tab stays unlocked; closing
-// the tab clears it (auto-lock). Persistent at-rest data in localStorage stays
-// ciphertext regardless.
+// The DEK lives in memory for the session and is mirrored (as a JWK) into
+// sessionStorage so a reload in the same tab stays unlocked; closing the tab
+// clears it. At-rest data in localStorage stays ciphertext regardless.
 const AUTH_KEY = 'infinity_vault_auth';
 const SESSION_KEY = 'infinity_vault_session';
-const SKEY = 'infinity_vault_skey'; // session-scoped derived key (JWK)
-const VERIFIER_TOKEN = 'infinity-vault';
+const SKEY = 'infinity_vault_skey'; // session-scoped DEK (JWK)
+const VERIFIER_TOKEN = 'infinity-vault'; // legacy v2 verifier payload
 
 class AuthManager {
     /** SHA-256 hex — retained only to verify + migrate legacy (v1) accounts. */
@@ -31,36 +33,79 @@ class AuthManager {
         try { return JSON.parse(localStorage.getItem(AUTH_KEY)); } catch { return null; }
     }
 
-    /** Register a new user. Returns true on success. */
+    static _writeAuth(authData) {
+        localStorage.setItem(AUTH_KEY, JSON.stringify(authData));
+    }
+
+    // ---- envelope helpers --------------------------------------------------
+
+    /** Wrap `dek` under a password-derived KEK → { salt, iterations, wrappedDEK }. */
+    static async _wrapWithPassword(dek, password) {
+        const salt = VaultCrypto.randomBytes(16);
+        const iterations = VaultCrypto.PBKDF2_ITERATIONS;
+        const kek = await VaultCrypto.deriveWrappingKey(password, salt, iterations);
+        const wrappedDEK = await VaultCrypto.wrapDEK(kek, dek);
+        return { salt: VaultCrypto.bytesToB64(salt), iterations, wrappedDEK };
+    }
+
+    /** Wrap `dek` under a recovery-key-derived KEK → { salt, iterations, wrappedDEK }. */
+    static async _wrapWithRecovery(dek, recoveryKey) {
+        const salt = VaultCrypto.randomBytes(16);
+        const iterations = VaultCrypto.PBKDF2_ITERATIONS;
+        const kek = await VaultCrypto.deriveWrappingKey(VaultCrypto.normalizeRecoveryKey(recoveryKey), salt, iterations);
+        const wrappedDEK = await VaultCrypto.wrapDEK(kek, dek);
+        return { salt: VaultCrypto.bytesToB64(salt), iterations, wrappedDEK };
+    }
+
+    /** Unwrap the DEK from an envelope ({ salt, iterations, wrappedDEK }) with a secret. Null on failure. */
+    static async _unwrap(envelope, secret) {
+        try {
+            const salt = VaultCrypto.b64ToBytes(envelope.salt);
+            const kek = await VaultCrypto.deriveWrappingKey(secret, salt, envelope.iterations);
+            return await VaultCrypto.unwrapDEK(kek, envelope.wrappedDEK);
+        } catch {
+            return null;
+        }
+    }
+
+    // ---- registration ------------------------------------------------------
+
+    /**
+     * Register a new user. On success returns the one-time recovery key (string)
+     * for the caller to display; returns `true` in the no-crypto fallback and
+     * `false` on invalid input.
+     */
     static async register(username, password) {
         if (!username || !password) return false;
         const uname = username.trim().toLowerCase();
 
         if (VaultCrypto.isSupported()) {
-            const salt = VaultCrypto.randomBytes(16);
-            const iterations = VaultCrypto.PBKDF2_ITERATIONS;
-            const key = await VaultCrypto.deriveKey(password, salt, iterations);
-            const verifier = await VaultCrypto.encryptJSON(key, { check: VERIFIER_TOKEN });
+            const dek = await VaultCrypto.generateDEK();
+            const pw = await this._wrapWithPassword(dek, password);
+            const recoveryKey = VaultCrypto.generateRecoveryKey();
+            const recovery = await this._wrapWithRecovery(dek, recoveryKey);
 
-            localStorage.setItem(AUTH_KEY, JSON.stringify({
-                v: 2, username: uname, kdf: 'PBKDF2', hash: 'SHA-256',
-                iterations, salt: VaultCrypto.bytesToB64(salt), verifier
-            }));
+            this._writeAuth({
+                v: 3, username: uname, kdf: 'PBKDF2',
+                iterations: pw.iterations, salt: pw.salt, wrappedDEK: pw.wrappedDEK,
+                recovery
+            });
 
-            // Preserve any data already present (e.g. a password change re-encrypts
-            // the current portfolio under the new key).
+            // Encrypt any data already present under the new DEK.
             const existing = InvestmentStorage.getInvestments();
-            await InvestmentStorage.enableEncryption(key, existing);
-            await this._establishSession(key);
-            return true;
+            await InvestmentStorage.enableEncryption(dek, existing);
+            await this._establishSession(dek);
+            return recoveryKey;
         }
 
         // Fallback: no Web Crypto (insecure context) — legacy plaintext account.
         const hash = await this.hashPassword(password);
-        localStorage.setItem(AUTH_KEY, JSON.stringify({ v: 1, username: uname, passwordHash: hash }));
+        this._writeAuth({ v: 1, username: uname, passwordHash: hash });
         sessionStorage.setItem(SESSION_KEY, 'true');
         return true;
     }
+
+    // ---- login + migration -------------------------------------------------
 
     /** Attempt login. Returns true if credentials match. */
     static async login(username, password) {
@@ -68,46 +113,119 @@ class AuthManager {
         if (!authData) return false;
         if (authData.username !== username.trim().toLowerCase()) return false;
 
-        if (authData.v === 2 || authData.verifier) {
+        // v3 envelope: unwrap the DEK with the password.
+        if (authData.v === 3) {
             if (!VaultCrypto.isSupported()) return false;
-            const salt = VaultCrypto.b64ToBytes(authData.salt);
-            const key = await VaultCrypto.deriveKey(password, salt, authData.iterations);
-            try {
-                const check = await VaultCrypto.decryptJSON(key, authData.verifier);
-                if (!check || check.check !== VERIFIER_TOKEN) return false;
-            } catch {
-                return false; // wrong password → GCM auth tag mismatch
-            }
-            await this._establishSession(key);
+            const dek = await this._unwrap(authData, password);
+            if (!dek) return false;
+            await this._establishSession(dek);
             return true;
         }
 
-        // Legacy v1 account: verify the SHA-256 hash, then upgrade to encrypted.
+        // v2 single-key account: verify via the verifier, then migrate to v3.
+        if (authData.v === 2 || authData.verifier) {
+            if (!VaultCrypto.isSupported()) return false;
+            const salt = VaultCrypto.b64ToBytes(authData.salt);
+            const oldKey = await VaultCrypto.deriveKey(password, salt, authData.iterations);
+            try {
+                const check = await VaultCrypto.decryptJSON(oldKey, authData.verifier);
+                if (!check || check.check !== VERIFIER_TOKEN) return false;
+            } catch {
+                return false;
+            }
+            await this._migrateToV3(authData.username, password, oldKey);
+            return true;
+        }
+
+        // Legacy v1 plaintext account: verify the hash, then upgrade.
         const hash = await this.hashPassword(password);
         if (authData.passwordHash !== hash) return false;
         if (VaultCrypto.isSupported()) {
-            await this._migrateLegacy(authData.username, password);
+            await this._migrateToV3(authData.username, password, null);
         } else {
             sessionStorage.setItem(SESSION_KEY, 'true');
         }
         return true;
     }
 
-    /** Upgrade a plaintext (v1) account + data to PBKDF2 + AES-GCM, losslessly. */
-    static async _migrateLegacy(uname, password) {
-        const existing = InvestmentStorage.getInvestments(); // plaintext, read before we change anything
-        const salt = VaultCrypto.randomBytes(16);
-        const iterations = VaultCrypto.PBKDF2_ITERATIONS;
-        const key = await VaultCrypto.deriveKey(password, salt, iterations);
-        const verifier = await VaultCrypto.encryptJSON(key, { check: VERIFIER_TOKEN });
+    /**
+     * Re-key an existing account to the v3 envelope. `oldKey` decrypts the
+     * current vault (v2); pass null for v1 (data is plaintext on disk). No
+     * recovery key is created here — migrated users are prompted to set one up
+     * from Settings. Lossless.
+     */
+    static async _migrateToV3(uname, password, oldKey) {
+        if (oldKey) await InvestmentStorage.unlock(oldKey); // decrypt current data into memory
+        const data = InvestmentStorage.getInvestments();
 
-        localStorage.setItem(AUTH_KEY, JSON.stringify({
-            v: 2, username: uname, kdf: 'PBKDF2', hash: 'SHA-256',
-            iterations, salt: VaultCrypto.bytesToB64(salt), verifier
-        }));
-        await InvestmentStorage.enableEncryption(key, existing); // encrypts data at rest
-        await this._establishSession(key);
+        const dek = await VaultCrypto.generateDEK();
+        const pw = await this._wrapWithPassword(dek, password);
+        this._writeAuth({
+            v: 3, username: uname, kdf: 'PBKDF2',
+            iterations: pw.iterations, salt: pw.salt, wrappedDEK: pw.wrappedDEK,
+            recovery: null
+        });
+        await InvestmentStorage.enableEncryption(dek, data); // re-encrypt under the DEK
+        await this._establishSession(dek);
     }
+
+    // ---- password change + recovery ----------------------------------------
+
+    /** Change the password by re-wrapping the DEK. Returns true on success. */
+    static async changePassword(currentPassword, newPassword) {
+        const authData = this._readAuth();
+        if (!authData || authData.v !== 3) return false;
+        const dek = await this._unwrap(authData, currentPassword);
+        if (!dek) return false; // current password wrong
+
+        const pw = await this._wrapWithPassword(dek, newPassword);
+        authData.salt = pw.salt;
+        authData.iterations = pw.iterations;
+        authData.wrappedDEK = pw.wrappedDEK;
+        this._writeAuth(authData); // recovery envelope + DEK unchanged
+        return true;
+    }
+
+    static hasRecoveryKey() {
+        const a = this._readAuth();
+        return !!(a && a.recovery);
+    }
+
+    /**
+     * Create (or replace) the recovery key for the current unlocked session.
+     * Returns the one-time recovery key string, or null if locked/unsupported.
+     */
+    static async setupRecoveryKey() {
+        const authData = this._readAuth();
+        const dek = typeof InvestmentStorage !== 'undefined' ? InvestmentStorage.getKey() : null;
+        if (!authData || authData.v !== 3 || !dek) return null;
+        const recoveryKey = VaultCrypto.generateRecoveryKey();
+        authData.recovery = await this._wrapWithRecovery(dek, recoveryKey);
+        this._writeAuth(authData);
+        return recoveryKey;
+    }
+
+    /**
+     * Reset the password using the recovery key (for a forgotten password).
+     * Unwraps the DEK via the recovery envelope and re-wraps it under the new
+     * password. Returns true on success, false if the recovery key is invalid.
+     */
+    static async resetWithRecoveryKey(recoveryKey, newPassword) {
+        const authData = this._readAuth();
+        if (!authData || authData.v !== 3 || !authData.recovery) return false;
+        const dek = await this._unwrap(authData.recovery, VaultCrypto.normalizeRecoveryKey(recoveryKey));
+        if (!dek) return false;
+
+        const pw = await this._wrapWithPassword(dek, newPassword);
+        authData.salt = pw.salt;
+        authData.iterations = pw.iterations;
+        authData.wrappedDEK = pw.wrappedDEK;
+        this._writeAuth(authData);
+        await this._establishSession(dek);
+        return true;
+    }
+
+    // ---- session lifecycle -------------------------------------------------
 
     /** Resume an existing session after a page reload (same tab). */
     static async resume() {
@@ -132,13 +250,13 @@ class AuthManager {
         }
     }
 
-    static async _establishSession(key) {
+    static async _establishSession(dek) {
         sessionStorage.setItem(SESSION_KEY, 'true');
         try {
-            sessionStorage.setItem(SKEY, JSON.stringify(await VaultCrypto.exportKey(key)));
+            sessionStorage.setItem(SKEY, JSON.stringify(await VaultCrypto.exportKey(dek)));
         } catch { /* non-extractable / no crypto — reload will require re-login */ }
         if (!InvestmentStorage.hasKey()) {
-            await InvestmentStorage.unlock(key);
+            await InvestmentStorage.unlock(dek);
         }
     }
 
