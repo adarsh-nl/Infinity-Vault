@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'infinity_vault_investments';
+const BACKUP_KEY = 'infinity_vault_backup_latest';
 
 class InvestmentStorage {
     static getInvestments() {
@@ -74,6 +75,47 @@ class InvestmentStorage {
 
         this.saveInvestments(investments);
         return investment;
+    }
+
+    /**
+     * Best-effort snapshot of the current data to a single rolling backup key.
+     * Called before destructive actions (import, clear) and on app load, so an
+     * accidental wipe or bad import is recoverable. Never throws: a quota error
+     * here must not block the primary save.
+     */
+    static backupNow() {
+        try {
+            const raw = localStorage.getItem(STORAGE_KEY);
+            if (!raw) return false;
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed) || parsed.length === 0) return false;
+            localStorage.setItem(BACKUP_KEY, JSON.stringify({
+                timestamp: new Date().toISOString(),
+                count: parsed.length,
+                data: parsed
+            }));
+            return true;
+        } catch (e) {
+            console.warn('Backup skipped (storage may be full)', e);
+            return false;
+        }
+    }
+
+    /** Return the latest backup { timestamp, count, data } or null. */
+    static getBackup() {
+        try {
+            const b = JSON.parse(localStorage.getItem(BACKUP_KEY));
+            if (b && Array.isArray(b.data)) return b;
+        } catch { }
+        return null;
+    }
+
+    /** Restore the latest backup over current data. Returns the backup, or null. */
+    static restoreBackup() {
+        const b = this.getBackup();
+        if (!b) return null;
+        this.saveInvestments(b.data);
+        return b;
     }
 
     static deleteInvestment(id) {

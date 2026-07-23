@@ -322,10 +322,19 @@
                                 </label>
                                 <input type="file" id="import-file" accept=".json" style="display:none" />
                             </div>
+                            <div class="settings-action-item">
+                                <div>
+                                    <strong>Restore Backup</strong>
+                                    <p>Recover the last snapshot taken before a clear or import.</p>
+                                </div>
+                                <button id="restore-backup-btn" class="btn-secondary"><i
+                                        class="ph-bold ph-clock-counter-clockwise"></i>
+                                    Restore</button>
+                            </div>
                             <div class="settings-action-item danger-zone">
                                 <div>
                                     <strong>Clear All Data</strong>
-                                    <p>Permanently delete all investments. Cannot be undone.</p>
+                                    <p>Permanently delete all investments. A backup is kept so you can restore.</p>
                                 </div>
                                 <button id="clear-data-btn" class="btn-danger"><i class="ph-bold ph-trash"></i>
                                     Clear</button>

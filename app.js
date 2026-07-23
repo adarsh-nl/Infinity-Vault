@@ -146,6 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
         dashboardEl.classList.remove('hidden');
         const username = AuthManager.getUsername();
         if (username) greetingText.textContent = `Welcome back, ${username}. Track your wealth growth securely.`;
+        InvestmentStorage.backupNow(); // snapshot last-good state at the start of the session
         updateDashboard();
         fetchGoldPrice().then(() => updateDashboard()); // refresh after gold update
     };
@@ -625,6 +626,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const parsed = JSON.parse(ev.target.result);
                 const imported = InvestmentStorage.normalizeImported(parsed);
                 if (!imported) throw new Error('Invalid');
+                InvestmentStorage.backupNow(); // snapshot current data before overwriting
                 InvestmentStorage.saveInvestments(imported);
                 updateDashboard(); renderAllInvestments();
                 showMsg(document.getElementById('data-msg'), `Imported ${imported.length} investments!`, 'success');
@@ -636,11 +638,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('clear-data-btn').addEventListener('click', () => {
         if (confirm('⚠️ This will permanently delete ALL investment data. Are you sure?')) {
+            InvestmentStorage.backupNow(); // keep a recoverable snapshot before wiping
             InvestmentStorage.saveInvestments([]);
             updateDashboard(); renderAllInvestments();
-            showMsg(document.getElementById('data-msg'), 'All data cleared.', 'success');
+            showMsg(document.getElementById('data-msg'), 'All data cleared. Use “Restore backup” if this was a mistake.', 'success');
         }
     });
+
+    const restoreBackupBtn = document.getElementById('restore-backup-btn');
+    if (restoreBackupBtn) {
+        restoreBackupBtn.addEventListener('click', () => {
+            const backup = InvestmentStorage.getBackup();
+            if (!backup) {
+                showMsg(document.getElementById('data-msg'), 'No backup available yet.', 'error');
+                return;
+            }
+            const when = new Date(backup.timestamp).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+            if (confirm(`Restore ${backup.count} investment(s) from the backup saved on ${when}? This replaces current data.`)) {
+                InvestmentStorage.restoreBackup();
+                updateDashboard(); renderAllInvestments();
+                showMsg(document.getElementById('data-msg'), `Restored ${backup.count} investments from backup.`, 'success');
+            }
+        });
+    }
 
     // ===================== INIT =====================
     updateFieldVisibility();
