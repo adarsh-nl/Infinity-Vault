@@ -23,6 +23,41 @@ document.addEventListener('DOMContentLoaded', () => {
     // can be unit-tested in isolation. Alias them for readability below.
     const { calculateFDMaturity, calculateSIPMaturity, investmentReturn, daysBetween } = Finance;
 
+    // Promise-based confirmation dialog — replaces blocking window.confirm() with
+    // the app's own modal. Resolves true on confirm, false on cancel/Escape/overlay.
+    const confirmDialog = ({ title, message, confirmText = 'Confirm', danger = false }) => {
+        const overlay = document.getElementById('confirm-modal');
+        const dialog = overlay.querySelector('.confirm-dialog');
+        const okBtn = document.getElementById('confirm-ok-btn');
+        const cancelBtn = document.getElementById('confirm-cancel-btn');
+        document.getElementById('confirm-title').textContent = title;
+        document.getElementById('confirm-message').textContent = message;
+        okBtn.textContent = confirmText;
+        okBtn.className = danger ? 'btn-danger' : 'btn-primary';
+        dialog.classList.toggle('danger', !!danger);
+
+        return new Promise((resolve) => {
+            const finish = (value) => {
+                overlay.classList.add('hidden');
+                okBtn.removeEventListener('click', onOk);
+                cancelBtn.removeEventListener('click', onCancel);
+                overlay.removeEventListener('click', onOverlay);
+                document.removeEventListener('keydown', onKey);
+                resolve(value);
+            };
+            const onOk = () => finish(true);
+            const onCancel = () => finish(false);
+            const onOverlay = (e) => { if (e.target === overlay) finish(false); };
+            const onKey = (e) => { if (e.key === 'Escape') finish(false); };
+            okBtn.addEventListener('click', onOk);
+            cancelBtn.addEventListener('click', onCancel);
+            overlay.addEventListener('click', onOverlay);
+            document.addEventListener('keydown', onKey);
+            overlay.classList.remove('hidden');
+            okBtn.focus(); // Enter/Space then activates the action; Escape cancels
+        });
+    };
+
     // ===================== GOLD PRICE MANAGER =====================
     const GOLD_CACHE_KEY = 'infinity_vault_gold_cache';
     let liveGoldPricePerGram = null;
@@ -515,7 +550,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // ===================== TABLE ACTIONS =====================
-    const handleTableAction = (e) => {
+    const handleTableAction = async (e) => {
         const editBtn = e.target.closest('.edit-btn');
         if (editBtn) {
             const inv = InvestmentStorage.getInvestment(editBtn.dataset.id);
@@ -523,10 +558,21 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         const deleteBtn = e.target.closest('.delete-btn');
-        if (deleteBtn && confirm('Are you sure you want to delete this investment?')) {
-            InvestmentStorage.deleteInvestment(deleteBtn.dataset.id);
-            updateDashboard();
-            renderAllInvestments();
+        if (deleteBtn) {
+            const inv = InvestmentStorage.getInvestment(deleteBtn.dataset.id);
+            const label = inv && inv.name ? `“${inv.name}”` : 'This investment';
+            const ok = await confirmDialog({
+                title: 'Delete investment?',
+                message: `${label} will be permanently removed. This can't be undone.`,
+                confirmText: 'Delete',
+                danger: true
+            });
+            if (ok) {
+                InvestmentStorage.deleteInvestment(deleteBtn.dataset.id);
+                updateDashboard();
+                renderAllInvestments();
+            }
+            return;
         }
         const proofBtn = e.target.closest('.view-proof-btn');
         if (proofBtn) {
@@ -704,8 +750,14 @@ document.addEventListener('DOMContentLoaded', () => {
         e.target.value = '';
     });
 
-    document.getElementById('clear-data-btn').addEventListener('click', () => {
-        if (confirm('⚠️ This will permanently delete ALL investment data. Are you sure?')) {
+    document.getElementById('clear-data-btn').addEventListener('click', async () => {
+        const ok = await confirmDialog({
+            title: 'Clear all data?',
+            message: 'Every investment will be permanently deleted. A backup is kept so you can restore.',
+            confirmText: 'Clear everything',
+            danger: true
+        });
+        if (ok) {
             InvestmentStorage.backupNow(); // keep a recoverable snapshot before wiping
             InvestmentStorage.saveInvestments([]);
             updateDashboard(); renderAllInvestments();
@@ -722,7 +774,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             const when = new Date(backup.timestamp).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
-            if (confirm(`Restore ${backup.count} investment(s) from the backup saved on ${when}? This replaces current data.`)) {
+            const ok = await confirmDialog({
+                title: 'Restore backup?',
+                message: `Restore ${backup.count} investment(s) from the backup saved on ${when}? This replaces your current data.`,
+                confirmText: 'Restore'
+            });
+            if (ok) {
                 await InvestmentStorage.restoreBackup();
                 updateDashboard(); renderAllInvestments();
                 showMsg(document.getElementById('data-msg'), `Restored ${backup.count} investments from backup.`, 'success');

@@ -781,6 +781,39 @@ select:focus {
   border-top: 1px solid var(--border-color);
 }
 
+/* CONFIRM DIALOG */
+.confirm-dialog {
+  max-width: 420px;
+  text-align: center;
+}
+
+.confirm-dialog .confirm-icon {
+  font-size: 2.75rem;
+  line-height: 1;
+  margin-bottom: 1rem;
+  color: var(--primary);
+}
+
+.confirm-dialog.danger .confirm-icon {
+  color: var(--danger);
+}
+
+.confirm-dialog h2 {
+  margin-bottom: 0.5rem;
+}
+
+.confirm-dialog .confirm-message {
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin-bottom: 0.5rem;
+}
+
+.confirm-dialog .form-actions {
+  justify-content: center;
+  margin-top: 1.75rem;
+  padding-top: 1.5rem;
+}
+
 /* AUTH SCREEN */
 .auth-screen {
   position: fixed;

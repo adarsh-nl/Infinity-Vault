@@ -533,6 +533,19 @@
                 style="max-width: 100%; border-radius: 0.5rem; margin-top: 1rem;" />
         </div>
     </div>
+    <!-- ===================== CONFIRM DIALOG ===================== -->
+    <div id="confirm-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"
+        aria-labelledby="confirm-title" aria-describedby="confirm-message">
+        <div class="modal glass-modal confirm-dialog">
+            <div class="confirm-icon" id="confirm-icon"><i class="ph-fill ph-warning-circle"></i></div>
+            <h2 id="confirm-title">Are you sure?</h2>
+            <p id="confirm-message" class="confirm-message"></p>
+            <div class="form-actions">
+                <button type="button" id="confirm-cancel-btn" class="btn-secondary">Cancel</button>
+                <button type="button" id="confirm-ok-btn" class="btn-primary">Confirm</button>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>
