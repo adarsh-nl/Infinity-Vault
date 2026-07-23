@@ -45,7 +45,7 @@ A lightweight, privacy-first investment tracker built entirely with vanilla HTML
 
 **Gold**
 - Enter weight (grams) and purchase price per gram
-- **Live 24K gold price** fetched from [metals.live](https://api.metals.live) (free, no API key)
+- **Live 24K gold price** fetched from [gold-api.com](https://gold-api.com) (free, no API key)
 - USD → INR conversion via [open.er-api.com](https://open.er-api.com)
 - Auto-updates current value for all gold investments on page load
 - Falls back to cached price if APIs are unavailable
@@ -102,7 +102,7 @@ Infinity Vault/
 2. **Authentication** — Credentials are hashed with SHA-256 and stored in `localStorage`. The session flag is stored in `sessionStorage`, which clears automatically when the tab closes.
 
 3. **Gold Price Fetching** — On page load, the app makes two API calls:
-   - `metals.live` for live gold price in USD per troy ounce
+   - `gold-api.com` for live gold price in USD per troy ounce
    - `open.er-api.com` for USD → INR exchange rate
    - Converts to ₹/gram and caches the result in `localStorage`
 
@@ -158,7 +158,7 @@ python3 -m http.server 8000
 | 🔒 Login/Register | SHA-256 hashed credentials, auto-lock on tab close |
 | 📅 FD Calculator | Quarterly compounding with live tenure preview |
 | 📈 SIP Calculator | Standard FV formula with wealth gain preview |
-| 🏅 Live Gold Price | Auto-fetched from metals.live, cached locally |
+| 🏅 Live Gold Price | Auto-fetched from gold-api.com, cached locally |
 | 📊 5 Charts | Diversification, Growth, Returns, Performance, Timeline |
 | 🔍 Search & Filter | Full-text search + type filter chips |
 | 💾 Export/Import | JSON backup and restore |

@@ -83,16 +83,16 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const fetchGoldPrice = async () => {
-        // Try metals.live API (free, no key, returns USD/oz)
+        // Live spot gold from gold-api.com (free, no key, returns USD per troy oz).
+        // Replaces api.metals.live, which is no longer reachable.
         try {
-            const res = await fetch('https://api.metals.live/v1/spot/gold');
+            const res = await fetch('https://api.gold-api.com/price/XAU');
             if (res.ok) {
                 const data = await res.json();
-                // data is array of objects with "price" in USD per troy oz
-                if (data && data.length > 0) {
-                    const usdPerOz = data[0].price;
-                    // Convert: 1 troy oz = 31.1035g, USD to INR ≈ 83.5 (approximate)
-                    // We'll try to get a live rate, fallback to 83.5
+                // { price: <USD per troy ounce>, symbol: "XAU", ... }
+                const usdPerOz = data && typeof data.price === 'number' ? data.price : null;
+                if (usdPerOz && usdPerOz > 0) {
+                    // Convert: 1 troy oz = 31.1035g. Get a live USD→INR rate, fallback to 83.5.
                     let usdToInr = 83.5;
                     try {
                         const fxRes = await fetch('https://open.er-api.com/v6/latest/USD');
