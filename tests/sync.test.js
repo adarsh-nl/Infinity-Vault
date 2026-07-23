@@ -124,17 +124,17 @@ describe('E2EE sync — enable, backup, restore on a second device', () => {
         expect(restored[0].amount).toBe(100000);
     });
 
-    it('rejects a wrong password on restore (cannot unwrap the DEK)', async () => {
+    it('restore fails to unwrap the DEK with the wrong password', async () => {
+        // signIn already gates on the password (authHash), so to exercise restore's
+        // own DEK-unwrap guard we sign in correctly, then restore with a wrong password.
         const a = newDevice(); useDevice(a);
         await AuthManager.register('bob', 'right-pw');
         Sync.configure(''); await Sync.enable('bob@example.com', 'right-pw');
 
         const b = newDevice(); useDevice(b);
         Sync.configure('');
-        await Sync.signIn('bob@example.com', 'wrong-pw'); // server auth still passes? no:
-        // signIn computes authHash from wrong pw → server 401
-        // (assert the failure explicitly below instead)
-        await expect(Sync.restore('wrong-pw')).rejects.toThrow();
+        await Sync.signIn('bob@example.com', 'right-pw');       // caches the account envelope
+        await expect(Sync.restore('wrong-pw')).rejects.toThrow('bad_password');
     });
 
     it('signIn fails with the wrong password (authHash mismatch)', async () => {

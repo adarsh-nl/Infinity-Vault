@@ -22,7 +22,10 @@ beforeEach(() => {
     InvestmentStorage.lock();
 });
 
-const seed = () => InvestmentStorage.addInvestment({ name: 'FD', type: 'Fixed Deposit', amount: 1000, maturity: 1100, date: '2025-01-01' });
+const seed = async () => {
+    InvestmentStorage.addInvestment({ name: 'FD', type: 'Fixed Deposit', amount: 1000, maturity: 1100, date: '2025-01-01' });
+    await InvestmentStorage.saveInvestments(InvestmentStorage.getInvestments()); // flush the encrypted write
+};
 const authRecord = () => JSON.parse(globalThis.localStorage.getItem('infinity_vault_auth'));
 
 describe('register / login (v3 envelope)', () => {
@@ -37,7 +40,7 @@ describe('register / login (v3 envelope)', () => {
 
     it('accepts the correct password and rejects the wrong one', async () => {
         await AuthManager.register('bob', 'right-pw');
-        seed();
+        await seed();
         InvestmentStorage.lock();
         expect(await AuthManager.login('bob', 'wrong')).toBe(false);
         expect(await AuthManager.login('bob', 'right-pw')).toBe(true);
@@ -48,7 +51,7 @@ describe('register / login (v3 envelope)', () => {
 describe('changePassword', () => {
     it('re-wraps the DEK: old fails, new works, data + recovery key intact', async () => {
         const rk = await AuthManager.register('carol', 'old-pw');
-        seed();
+        await seed();
         expect(await AuthManager.changePassword('WRONG', 'new-pw')).toBe(false);
         expect(await AuthManager.changePassword('old-pw', 'new-pw')).toBe(true);
 
@@ -66,7 +69,7 @@ describe('changePassword', () => {
 describe('resetWithRecoveryKey', () => {
     it('recovers a forgotten password with the recovery key', async () => {
         const rk = await AuthManager.register('dave', 'forgotten');
-        seed();
+        await seed();
         InvestmentStorage.lock();
 
         const wrongRk = VaultCrypto.generateRecoveryKey();
@@ -84,7 +87,7 @@ describe('setupRecoveryKey (for migrated users)', () => {
         await AuthManager.register('erin', 'pw');
         // Simulate a migrated account with no recovery envelope yet.
         const a = authRecord(); a.recovery = null; globalThis.localStorage.setItem('infinity_vault_auth', JSON.stringify(a));
-        seed();
+        await seed();
 
         const rk = await AuthManager.setupRecoveryKey();
         expect(typeof rk).toBe('string');

@@ -123,8 +123,12 @@ class InvestmentStorage {
         _cache = investments; // in-memory truth updates synchronously
         if (_key) {
             // Encrypt-and-write off the critical path, serialized to avoid races.
+            // Capture the key NOW: if the session is locked (or re-keyed) before this
+            // deferred write runs, it must still encrypt with the key that was active
+            // when the save was requested — not whatever `_key` happens to be later.
+            const key = _key;
             _persist = _persist
-                .then(() => this._writeEncrypted(investments, _key))
+                .then(() => this._writeEncrypted(investments, key))
                 .catch(e => console.error('Encrypted save failed', e));
             return _persist;
         }
