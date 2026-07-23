@@ -37,12 +37,16 @@ document.addEventListener('DOMContentLoaded', () => {
         dialog.classList.toggle('danger', !!danger);
 
         return new Promise((resolve) => {
+            const returnFocus = document.activeElement;
+            const detachTrap = attachFocusTrap(overlay);
             const finish = (value) => {
                 overlay.classList.add('hidden');
                 okBtn.removeEventListener('click', onOk);
                 cancelBtn.removeEventListener('click', onCancel);
                 overlay.removeEventListener('click', onOverlay);
                 document.removeEventListener('keydown', onKey);
+                detachTrap();
+                if (returnFocus && returnFocus.focus) returnFocus.focus();
                 resolve(value);
             };
             const onOk = () => finish(true);
@@ -65,6 +69,24 @@ document.addEventListener('DOMContentLoaded', () => {
         el.classList.remove('hidden');
     };
     const clearModalError = () => document.getElementById('modal-error').classList.add('hidden');
+
+    // --- Modal focus management: keep Tab inside an open dialog ---
+    const getFocusable = (container) =>
+        [...container.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+            .filter(el => el.offsetParent !== null); // visible only
+
+    const attachFocusTrap = (modalEl) => {
+        const handler = (e) => {
+            if (e.key !== 'Tab') return;
+            const f = getFocusable(modalEl);
+            if (!f.length) return;
+            const first = f[0], last = f[f.length - 1];
+            if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+            else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        };
+        modalEl.addEventListener('keydown', handler);
+        return () => modalEl.removeEventListener('keydown', handler);
+    };
 
     // ===================== GOLD PRICE MANAGER =====================
     const GOLD_CACHE_KEY = 'infinity_vault_gold_cache';
@@ -397,6 +419,14 @@ document.addEventListener('DOMContentLoaded', () => {
     themeToggleBtn.addEventListener('click', toggleTheme);
 
     // ===================== MODAL =====================
+    let modalDetachTrap = null;
+    let modalReturnFocus = null;
+    const activateModalFocus = () => {
+        modalReturnFocus = document.activeElement; // the control that opened the modal
+        modalDetachTrap = attachFocusTrap(modal);
+        document.getElementById('inv-name').focus();
+    };
+
     const openModal = () => {
         editingId = null;
         modalTitle.textContent = 'Add New Investment';
@@ -405,6 +435,7 @@ document.addEventListener('DOMContentLoaded', () => {
         modal.classList.remove('hidden');
         updateFieldVisibility();
         updateGoldPreview();
+        activateModalFocus();
     };
 
     // Open the modal pre-filled with an existing investment for editing.
@@ -449,6 +480,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         modal.classList.remove('hidden');
+        activateModalFocus();
     };
 
     const closeModal = () => {
@@ -464,11 +496,14 @@ document.addEventListener('DOMContentLoaded', () => {
         currentProofBase64 = null;
         proofPreviewContainer.classList.add('hidden');
         clearModalError();
+        if (modalDetachTrap) { modalDetachTrap(); modalDetachTrap = null; }
+        if (modalReturnFocus && modalReturnFocus.focus) modalReturnFocus.focus();
     };
     addInvestmentBtn.addEventListener('click', openModal);
     closeModalBtn.addEventListener('click', closeModal);
     cancelModalBtn.addEventListener('click', closeModal);
     modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+    modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 
     // Image compression for proof
     invProofInput.addEventListener('change', (e) => {
@@ -503,8 +538,22 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.readAsDataURL(file);
     });
 
-    closeProofBtn.addEventListener('click', () => proofModal.classList.add('hidden'));
-    proofModal.addEventListener('click', (e) => { if (e.target === proofModal) proofModal.classList.add('hidden'); });
+    let proofDetachTrap = null, proofReturnFocus = null;
+    const openProofModal = (src, trigger) => {
+        proofReturnFocus = trigger || document.activeElement;
+        proofDisplayImg.src = src;
+        proofModal.classList.remove('hidden');
+        proofDetachTrap = attachFocusTrap(proofModal);
+        closeProofBtn.focus();
+    };
+    const closeProofModal = () => {
+        proofModal.classList.add('hidden');
+        if (proofDetachTrap) { proofDetachTrap(); proofDetachTrap = null; }
+        if (proofReturnFocus && proofReturnFocus.focus) proofReturnFocus.focus();
+    };
+    closeProofBtn.addEventListener('click', closeProofModal);
+    proofModal.addEventListener('click', (e) => { if (e.target === proofModal) closeProofModal(); });
+    proofModal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeProofModal(); });
 
     // ===================== FORM SUBMISSION =====================
     form.addEventListener('submit', (e) => {
@@ -593,8 +642,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const proofBtn = e.target.closest('.view-proof-btn');
         if (proofBtn) {
-            proofDisplayImg.src = proofBtn.dataset.proof;
-            proofModal.classList.remove('hidden');
+            openProofModal(proofBtn.dataset.proof, proofBtn);
         }
     };
     tbody.addEventListener('click', handleTableAction);
@@ -618,9 +666,10 @@ document.addEventListener('DOMContentLoaded', () => {
             typeExtra = `<br><small style="color:var(--text-muted)">${Number(inv.goldWeight)}g</small>`;
         }
 
+        const nameLabel = escapeHtml(inv.name);
         // proof is validated to be a data:image/* URL on import; escape defensively.
         let proofBtnHtml = inv.proof
-            ? `<button class="view-proof-btn" data-proof="${escapeHtml(inv.proof)}" title="View Proof" style="margin-right:0.5rem"><i class="ph-bold ph-image"></i></button>`
+            ? `<button class="view-proof-btn" data-proof="${escapeHtml(inv.proof)}" title="View Proof" aria-label="View proof for ${nameLabel}" style="margin-right:0.5rem"><i class="ph-bold ph-image" aria-hidden="true"></i></button>`
             : '';
 
         tr.innerHTML = `
@@ -632,8 +681,8 @@ document.addEventListener('DOMContentLoaded', () => {
             <td>${formatDate(inv.date)}</td>
             <td>
                 ${proofBtnHtml}
-                <button class="edit-btn" data-id="${inv.id}" title="Edit" style="margin-right:0.5rem"><i class="ph-bold ph-pencil-simple"></i></button>
-                <button class="delete-btn" data-id="${inv.id}" title="Delete"><i class="ph-bold ph-trash"></i></button>
+                <button class="edit-btn" data-id="${inv.id}" title="Edit" aria-label="Edit ${nameLabel}" style="margin-right:0.5rem"><i class="ph-bold ph-pencil-simple" aria-hidden="true"></i></button>
+                <button class="delete-btn" data-id="${inv.id}" title="Delete" aria-label="Delete ${nameLabel}"><i class="ph-bold ph-trash" aria-hidden="true"></i></button>
             </td>
         `;
         return tr;

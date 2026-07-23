@@ -99,7 +99,7 @@
     <!-- ===================== MAIN APP ===================== -->
     <div id="dashboard" class="app-container hidden">
         <!-- Sidebar -->
-        <nav class="sidebar">
+        <nav class="sidebar" aria-label="Main navigation">
             <div class="logo">
                 <span class="logo-icon"><i class="ph-fill ph-infinity"></i></span>
                 <h1>Infinity Vault</h1>
@@ -178,11 +178,14 @@
                 <section class="charts-section">
                     <div class="chart-container glass">
                         <h3>Asset Diversification</h3>
-                        <div class="canvas-wrapper"><canvas id="diversificationChart"></canvas></div>
+                        <div class="canvas-wrapper"><canvas id="diversificationChart" role="img"
+                                aria-label="Doughnut chart of your portfolio split across asset types"></canvas></div>
                     </div>
                     <div class="chart-container glass">
                         <h3>Projected Growth</h3>
-                        <div class="canvas-wrapper bar-canvas"><canvas id="projectionChart"></canvas></div>
+                        <div class="canvas-wrapper bar-canvas"><canvas id="projectionChart" role="img"
+                                aria-label="Bar chart comparing total invested with total maturity or current value"></canvas>
+                        </div>
                     </div>
                 </section>
 
@@ -191,17 +194,22 @@
                     <div class="chart-container glass">
                         <h3>Returns by Investment (p.a.)</h3>
                         <div class="canvas-wrapper" style="height:auto; min-height:200px"><canvas
-                                id="returnsChart"></canvas></div>
+                                id="returnsChart" role="img"
+                                aria-label="Horizontal bar chart ranking each investment by annualized return"></canvas>
+                        </div>
                     </div>
                 </section>
                 <section class="charts-section">
                     <div class="chart-container glass">
                         <h3>Type-Wise Performance</h3>
-                        <div class="canvas-wrapper bar-canvas"><canvas id="typePerformanceChart"></canvas></div>
+                        <div class="canvas-wrapper bar-canvas"><canvas id="typePerformanceChart" role="img"
+                                aria-label="Grouped bar chart of invested versus maturity for each asset class"></canvas>
+                        </div>
                     </div>
                     <div class="chart-container glass">
                         <h3>Investment Timeline</h3>
-                        <div class="canvas-wrapper bar-canvas"><canvas id="timelineChart"></canvas></div>
+                        <div class="canvas-wrapper bar-canvas"><canvas id="timelineChart" role="img"
+                                aria-label="Line chart of cumulative invested amount over time"></canvas></div>
                     </div>
                 </section>
                 <section class="recent-investments glass">
@@ -317,7 +325,7 @@
                                 <label for="confirm-new-password">Confirm New Password</label>
                                 <input type="password" id="confirm-new-password" required minlength="4" />
                             </div>
-                            <p id="password-msg" class="settings-msg hidden"></p>
+                            <p id="password-msg" class="settings-msg hidden" role="status" aria-live="polite"></p>
                             <button type="submit" class="btn-primary"><i class="ph-bold ph-check"></i> Update
                                 Password</button>
                         </form>
@@ -367,7 +375,7 @@
                                     Clear</button>
                             </div>
                         </div>
-                        <p id="data-msg" class="settings-msg hidden"></p>
+                        <p id="data-msg" class="settings-msg hidden" role="status" aria-live="polite"></p>
                     </div>
                 </div>
             </div>
@@ -375,11 +383,13 @@
     </div>
 
     <!-- ===================== ADD INVESTMENT MODAL ===================== -->
-    <div id="investment-modal" class="modal-overlay hidden">
+    <div id="investment-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"
+        aria-labelledby="modal-title">
         <div class="modal glass-modal">
             <div class="modal-header">
                 <h2 id="modal-title">Add New Investment</h2>
-                <button id="close-modal-btn" class="close-btn"><i class="ph-bold ph-x"></i></button>
+                <button id="close-modal-btn" class="close-btn" aria-label="Close dialog"><i class="ph-bold ph-x"
+                        aria-hidden="true"></i></button>
             </div>
             <form id="add-investment-form" class="modal-form">
                 <div class="form-group">
@@ -524,11 +534,13 @@
         </div>
     </div>
     <!-- ===================== PROOF VIEW MODAL ===================== -->
-    <div id="proof-modal" class="modal-overlay hidden">
+    <div id="proof-modal" class="modal-overlay hidden" role="dialog" aria-modal="true"
+        aria-labelledby="proof-modal-title">
         <div class="modal glass-modal" style="max-width: 600px; text-align: center;">
             <div class="modal-header">
-                <h2>Investment Proof</h2>
-                <button id="close-proof-btn" class="close-btn"><i class="ph-bold ph-x"></i></button>
+                <h2 id="proof-modal-title">Investment Proof</h2>
+                <button id="close-proof-btn" class="close-btn" aria-label="Close dialog"><i class="ph-bold ph-x"
+                        aria-hidden="true"></i></button>
             </div>
             <img id="proof-display-img" src="" alt="Proof"
                 style="max-width: 100%; border-radius: 0.5rem; margin-top: 1rem;" />

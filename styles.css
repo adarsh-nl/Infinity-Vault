@@ -772,6 +772,20 @@ select:focus {
   background-color: var(--bg-card);
 }
 
+/* Visible keyboard focus for every interactive control (keyboard only, not mouse).
+   Inputs/selects keep their own border+glow focus style above. */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+input:focus-visible,
+select:focus-visible,
+.filter-search input:focus-visible {
+  outline: none;
+}
+
 .form-actions {
   display: flex;
   justify-content: flex-end;
