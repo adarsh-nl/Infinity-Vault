@@ -591,6 +591,7 @@ td strong {
 }
 
 .view-proof-btn,
+.edit-btn,
 .delete-btn {
   border: 1px solid transparent;
   cursor: pointer;
@@ -601,6 +602,18 @@ td strong {
   justify-content: center;
   border-radius: 0.75rem;
   transition: all 0.2s;
+}
+
+.edit-btn {
+  background: var(--bg-subtle, rgba(100, 116, 139, 0.12));
+  color: var(--text-muted, #64748b);
+}
+
+.edit-btn:hover {
+  background: var(--primary);
+  color: white;
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
 }
 
 .view-proof-btn {

@@ -259,6 +259,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const proofDisplayImg = document.getElementById('proof-display-img');
     let currentProofBase64 = null;
 
+    // Modal mode: null = adding a new investment, otherwise the id being edited.
+    const modalTitle = document.getElementById('modal-title');
+    const modalSubmitBtn = document.getElementById('modal-submit-btn');
+    let editingId = null;
+
     // ===================== FORM FIELD TOGGLE =====================
     const allConditionalInputs = [
         invAmountInput, invRateInput, invMaturityDate,
@@ -349,10 +354,64 @@ document.addEventListener('DOMContentLoaded', () => {
     themeToggleBtn.addEventListener('click', toggleTheme);
 
     // ===================== MODAL =====================
-    const openModal = () => { modal.classList.remove('hidden'); updateFieldVisibility(); updateGoldPreview(); };
+    const openModal = () => {
+        editingId = null;
+        modalTitle.textContent = 'Add New Investment';
+        modalSubmitBtn.textContent = 'Save Investment';
+        modal.classList.remove('hidden');
+        updateFieldVisibility();
+        updateGoldPreview();
+    };
+
+    // Open the modal pre-filled with an existing investment for editing.
+    const openEditModal = (inv) => {
+        form.reset();
+        editingId = inv.id;
+        modalTitle.textContent = 'Edit Investment';
+        modalSubmitBtn.textContent = 'Save Changes';
+
+        document.getElementById('inv-name').value = inv.name || '';
+        invTypeSelect.value = inv.type;
+        invDateInput.value = inv.date || '';
+        updateFieldVisibility();
+
+        if (inv.type === 'Fixed Deposit') {
+            invAmountInput.value = inv.amount ?? '';
+            invRateInput.value = inv.interestRate ?? '';
+            invMaturityDate.value = inv.maturityDate || '';
+            updateFDPreview();
+        } else if (inv.type === 'SIP') {
+            sipMonthly.value = inv.sipMonthly ?? '';
+            sipMonths.value = inv.sipDuration ?? '';
+            sipReturnRate.value = inv.sipRate ?? '';
+            updateSIPPreview();
+        } else if (inv.type === 'Gold') {
+            goldWeight.value = inv.goldWeight ?? '';
+            goldPurchasePrice.value = inv.goldPurchasePrice ?? '';
+            updateGoldPreview();
+        } else {
+            document.getElementById('generic-amount').value = inv.amount ?? '';
+            document.getElementById('inv-maturity').value = inv.maturity ?? '';
+        }
+
+        // Carry the existing proof forward unless the user picks a new file.
+        currentProofBase64 = inv.proof || null;
+        if (inv.proof) {
+            proofPreviewImg.src = inv.proof;
+            proofPreviewContainer.classList.remove('hidden');
+        } else {
+            proofPreviewContainer.classList.add('hidden');
+        }
+
+        modal.classList.remove('hidden');
+    };
+
     const closeModal = () => {
         modal.classList.add('hidden');
         form.reset();
+        editingId = null;
+        modalTitle.textContent = 'Add New Investment';
+        modalSubmitBtn.textContent = 'Save Investment';
         updateFieldVisibility();
         fdTenureDisplay.textContent = '— days'; fdMaturityDisplay.textContent = '₹ —';
         sipInvestedDisplay.textContent = '₹ —'; sipMaturityDisplay.textContent = '₹ —'; sipGainDisplay.textContent = '₹ —';
@@ -433,7 +492,7 @@ document.addEventListener('DOMContentLoaded', () => {
             maturity = parseFloat(document.getElementById('inv-maturity').value) || 0;
         }
 
-        InvestmentStorage.addInvestment({
+        const record = {
             name: document.getElementById('inv-name').value,
             type, amount, maturity,
             date: invDateInput.value,
@@ -441,13 +500,28 @@ document.addEventListener('DOMContentLoaded', () => {
             sipMonthly: sipMonthlyAmt, sipDuration, sipRate,
             goldWeight: goldWeightVal, goldPurchasePrice: goldPurchasePriceVal,
             proof: currentProofBase64
-        });
+        };
+
+        if (editingId) {
+            record.id = editingId;
+            InvestmentStorage.updateInvestment(record);
+        } else {
+            InvestmentStorage.addInvestment(record);
+        }
+
         closeModal();
         updateDashboard();
+        renderAllInvestments();
     });
 
     // ===================== TABLE ACTIONS =====================
     const handleTableAction = (e) => {
+        const editBtn = e.target.closest('.edit-btn');
+        if (editBtn) {
+            const inv = InvestmentStorage.getInvestment(editBtn.dataset.id);
+            if (inv) openEditModal(inv);
+            return;
+        }
         const deleteBtn = e.target.closest('.delete-btn');
         if (deleteBtn && confirm('Are you sure you want to delete this investment?')) {
             InvestmentStorage.deleteInvestment(deleteBtn.dataset.id);
@@ -495,6 +569,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <td>${formatDate(inv.date)}</td>
             <td>
                 ${proofBtnHtml}
+                <button class="edit-btn" data-id="${inv.id}" title="Edit" style="margin-right:0.5rem"><i class="ph-bold ph-pencil-simple"></i></button>
                 <button class="delete-btn" data-id="${inv.id}" title="Delete"><i class="ph-bold ph-trash"></i></button>
             </td>
         `;

@@ -137,9 +137,32 @@ class InvestmentStorage {
         return investment;
     }
 
+    static updateInvestment(updated) {
+        const investments = this.getInvestments();
+        const idx = investments.findIndex(inv => inv.id === updated.id);
+        if (idx === -1) return null;
+
+        updated.amount = parseFloat(updated.amount);
+        updated.maturity = parseFloat(updated.maturity);
+
+        // Full replace of the record's fields (the form supplies every field for
+        // the chosen type, nulling those that don't apply — e.g. FD → Gold).
+        investments[idx] = { ...investments[idx], ...updated };
+
+        // Keep the date-descending order in case the date changed.
+        investments.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        this.saveInvestments(investments);
+        return investments[idx];
+    }
+
     static deleteInvestment(id) {
         const investments = this.getInvestments().filter(inv => inv.id !== id);
         this.saveInvestments(investments);
+    }
+
+    static getInvestment(id) {
+        return this.getInvestments().find(inv => inv.id === id) || null;
     }
 
     /**

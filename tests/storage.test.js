@@ -70,6 +70,36 @@ describe('backup / restore', () => {
     });
 });
 
+describe('updateInvestment', () => {
+    it('edits an existing record in place, preserving its id', () => {
+        const created = InvestmentStorage.addInvestment({ name: 'Old', type: 'Stocks', amount: 1000, maturity: 1100, date: '2025-01-01' });
+        InvestmentStorage.updateInvestment({ id: created.id, name: 'New', type: 'Stocks', amount: 2000, maturity: 2500, date: '2025-01-01' });
+
+        const all = InvestmentStorage.getInvestments();
+        expect(all).toHaveLength(1);
+        expect(all[0].id).toBe(created.id);
+        expect(all[0].name).toBe('New');
+        expect(all[0].amount).toBe(2000);
+        expect(all[0].maturity).toBe(2500);
+    });
+
+    it('nulls fields that do not apply after a type change (FD → Gold)', () => {
+        const fd = InvestmentStorage.addInvestment({ name: 'FD', type: 'Fixed Deposit', amount: 1000, maturity: 1100, date: '2025-01-01', interestRate: 7, tenureDays: 365 });
+        InvestmentStorage.updateInvestment({ id: fd.id, name: 'Coin', type: 'Gold', amount: 500, maturity: 600, date: '2025-01-01', interestRate: null, tenureDays: null, goldWeight: 1 });
+
+        const inv = InvestmentStorage.getInvestment(fd.id);
+        expect(inv.type).toBe('Gold');
+        expect(inv.interestRate).toBeNull();
+        expect(inv.goldWeight).toBe(1);
+    });
+
+    it('returns null for an unknown id and leaves data untouched', () => {
+        InvestmentStorage.addInvestment({ name: 'A', type: 'Stocks', amount: 1, maturity: 2, date: '2025-01-01' });
+        expect(InvestmentStorage.updateInvestment({ id: 'nope', name: 'X' })).toBeNull();
+        expect(InvestmentStorage.getInvestments()).toHaveLength(1);
+    });
+});
+
 describe('getKPIs', () => {
     it('aggregates totals and weighted annualized return', () => {
         InvestmentStorage.saveInvestments([
