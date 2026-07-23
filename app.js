@@ -88,6 +88,86 @@ document.addEventListener('DOMContentLoaded', () => {
         return () => modalEl.removeEventListener('keydown', handler);
     };
 
+    // ===================== RECOVERY KEY UI =====================
+    // One-time reveal of a recovery key. Deliberately no overlay/Escape dismiss —
+    // the user must acknowledge before the key is gone.
+    const showRecoveryModal = (recoveryKey, onDone) => {
+        const overlay = document.getElementById('recovery-modal');
+        const doneBtn = document.getElementById('recovery-done-btn');
+        const copyBtn = document.getElementById('copy-recovery-btn');
+        document.getElementById('recovery-key-value').textContent = recoveryKey;
+        const returnFocus = document.activeElement;
+        const detachTrap = attachFocusTrap(overlay);
+
+        const onCopy = async () => {
+            try {
+                await navigator.clipboard.writeText(recoveryKey);
+                copyBtn.innerHTML = '<i class="ph-bold ph-check" aria-hidden="true"></i> Copied';
+                setTimeout(() => { copyBtn.innerHTML = '<i class="ph-bold ph-copy" aria-hidden="true"></i> Copy'; }, 2000);
+            } catch { /* clipboard blocked — the key is selectable manually */ }
+        };
+        const onDoneClick = () => {
+            overlay.classList.add('hidden');
+            detachTrap();
+            copyBtn.removeEventListener('click', onCopy);
+            doneBtn.removeEventListener('click', onDoneClick);
+            if (returnFocus && returnFocus.focus) returnFocus.focus();
+            if (onDone) onDone();
+        };
+        copyBtn.addEventListener('click', onCopy);
+        doneBtn.addEventListener('click', onDoneClick);
+        overlay.classList.remove('hidden');
+        doneBtn.focus();
+    };
+
+    // "Forgot password?" → reset the password with the recovery key.
+    const resetModal = document.getElementById('reset-modal');
+    const resetForm = document.getElementById('reset-form');
+    const resetError = document.getElementById('reset-error');
+    let resetDetachTrap = null, resetReturnFocus = null;
+    const openResetModal = () => {
+        resetForm.reset();
+        resetError.classList.add('hidden');
+        resetReturnFocus = document.activeElement;
+        resetModal.classList.remove('hidden');
+        resetDetachTrap = attachFocusTrap(resetModal);
+        document.getElementById('reset-recovery-key').focus();
+    };
+    const closeResetModal = () => {
+        resetModal.classList.add('hidden');
+        if (resetDetachTrap) { resetDetachTrap(); resetDetachTrap = null; }
+        if (resetReturnFocus && resetReturnFocus.focus) resetReturnFocus.focus();
+    };
+    document.getElementById('forgot-password-btn').addEventListener('click', openResetModal);
+    document.getElementById('close-reset-btn').addEventListener('click', closeResetModal);
+    document.getElementById('cancel-reset-btn').addEventListener('click', closeResetModal);
+    resetModal.addEventListener('click', (e) => { if (e.target === resetModal) closeResetModal(); });
+    resetModal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeResetModal(); });
+    resetForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        resetError.classList.add('hidden');
+        const rk = document.getElementById('reset-recovery-key').value;
+        const np = document.getElementById('reset-new-password').value;
+        const ok = await AuthManager.resetWithRecoveryKey(rk, np);
+        if (!ok) { resetError.textContent = 'That recovery key is not valid.'; resetError.classList.remove('hidden'); return; }
+        closeResetModal();
+        showDashboard();
+    });
+
+    // Settings → generate / regenerate a recovery key (esp. for migrated accounts).
+    const updateRecoveryStatus = () => {
+        const has = AuthManager.hasRecoveryKey();
+        document.getElementById('setup-recovery-label').textContent = has ? 'Regenerate' : 'Generate';
+        document.getElementById('recovery-status-text').textContent = has
+            ? 'A recovery key is set up. Regenerating replaces it — the old key stops working.'
+            : 'No recovery key yet. Generate one so a forgotten password can be recovered.';
+    };
+    document.getElementById('setup-recovery-btn').addEventListener('click', async () => {
+        const rk = await AuthManager.setupRecoveryKey();
+        if (!rk) { showMsg(document.getElementById('recovery-msg'), 'Could not create a recovery key.', 'error'); return; }
+        showRecoveryModal(rk, updateRecoveryStatus);
+    });
+
     // ===================== GOLD PRICE MANAGER =====================
     const GOLD_CACHE_KEY = 'infinity_vault_gold_cache';
     let liveGoldPricePerGram = null;
@@ -245,8 +325,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const cf = document.getElementById('register-confirm').value;
         if (pw.length < 4) { registerError.textContent = 'Password must be at least 4 characters.'; registerError.classList.remove('hidden'); return; }
         if (pw !== cf) { registerError.textContent = 'Passwords do not match.'; registerError.classList.remove('hidden'); return; }
-        await AuthManager.register(document.getElementById('register-username').value, pw);
-        showDashboard();
+        const rk = await AuthManager.register(document.getElementById('register-username').value, pw);
+        // register() returns the one-time recovery key (string) when encryption is
+        // available; show it before entering the dashboard.
+        if (typeof rk === 'string') showRecoveryModal(rk, showDashboard);
+        else showDashboard();
     });
 
     logoutBtn.addEventListener('click', () => { AuthManager.logout(); showAuth(); });
@@ -262,6 +345,7 @@ document.addEventListener('DOMContentLoaded', () => {
         navItems.forEach(li => li.classList.toggle('active', li.dataset.page === pageId));
         if (pageId === 'page-dashboard') updateDashboard();
         if (pageId === 'page-investments') renderAllInvestments();
+        if (pageId === 'page-settings') updateRecoveryStatus();
     };
 
     navItems.forEach(li => {
