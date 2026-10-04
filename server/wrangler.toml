@@ -1,0 +1,21 @@
+# Cloudflare Workers config for the Infinity Vault sync backend.
+# Reference scaffold — create the D1 DB and R2 bucket, then fill in the ids:
+#   wrangler d1 create infinity-vault
+#   wrangler d1 execute infinity-vault --file=./schema.sql
+#   wrangler r2 bucket create infinity-vault-vaults
+name = "infinity-vault-sync"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "infinity-vault"
+database_id = "REPLACE_WITH_D1_ID"
+
+[[r2_buckets]]
+binding = "VAULT"
+bucket_name = "infinity-vault-vaults"
+
+[vars]
+# Comma-separated allowed origins for CORS (the app's origin).
+ALLOWED_ORIGIN = "https://app.infinityvault.example"

@@ -12,17 +12,161 @@ document.addEventListener('DOMContentLoaded', () => {
         return new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric' }).format(new Date(dateString));
     };
 
-    const calculateFDMaturity = (principal, annualRate, days) => {
-        if (!principal || !annualRate || !days || days <= 0) return 0;
-        return principal * Math.pow(1 + (annualRate / 100) / 4, 4 * days / 365);
+    // Escape user-controlled strings before they enter innerHTML. Investment
+    // names (and imported JSON) are attacker-influenced, so anything rendered
+    // via template strings must pass through here to prevent stored XSS.
+    const escapeHtml = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+
+    // Financial formulas live in finance.js (loaded before this script) so they
+    // can be unit-tested in isolation. Alias them for readability below.
+    const { calculateFDMaturity, calculateSIPMaturity, investmentReturn, daysBetween } = Finance;
+
+    // Promise-based confirmation dialog — replaces blocking window.confirm() with
+    // the app's own modal. Resolves true on confirm, false on cancel/Escape/overlay.
+    const confirmDialog = ({ title, message, confirmText = 'Confirm', danger = false }) => {
+        const overlay = document.getElementById('confirm-modal');
+        const dialog = overlay.querySelector('.confirm-dialog');
+        const okBtn = document.getElementById('confirm-ok-btn');
+        const cancelBtn = document.getElementById('confirm-cancel-btn');
+        document.getElementById('confirm-title').textContent = title;
+        document.getElementById('confirm-message').textContent = message;
+        okBtn.textContent = confirmText;
+        okBtn.className = danger ? 'btn-danger' : 'btn-primary';
+        dialog.classList.toggle('danger', !!danger);
+
+        return new Promise((resolve) => {
+            const returnFocus = document.activeElement;
+            const detachTrap = attachFocusTrap(overlay);
+            const finish = (value) => {
+                overlay.classList.add('hidden');
+                okBtn.removeEventListener('click', onOk);
+                cancelBtn.removeEventListener('click', onCancel);
+                overlay.removeEventListener('click', onOverlay);
+                document.removeEventListener('keydown', onKey);
+                detachTrap();
+                if (returnFocus && returnFocus.focus) returnFocus.focus();
+                resolve(value);
+            };
+            const onOk = () => finish(true);
+            const onCancel = () => finish(false);
+            const onOverlay = (e) => { if (e.target === overlay) finish(false); };
+            const onKey = (e) => { if (e.key === 'Escape') finish(false); };
+            okBtn.addEventListener('click', onOk);
+            cancelBtn.addEventListener('click', onCancel);
+            overlay.addEventListener('click', onOverlay);
+            document.addEventListener('keydown', onKey);
+            overlay.classList.remove('hidden');
+            okBtn.focus(); // Enter/Space then activates the action; Escape cancels
+        });
     };
 
-    const calculateSIPMaturity = (monthly, annualRate, months) => {
-        if (!monthly || !months || months <= 0) return monthly * months;
-        const r = (annualRate / 100) / 12;
-        if (r === 0) return monthly * months;
-        return monthly * (((Math.pow(1 + r, months) - 1) / r) * (1 + r));
+    // Inline validation feedback inside the investment modal.
+    const showModalError = (msg) => {
+        const el = document.getElementById('modal-error');
+        el.textContent = msg;
+        el.classList.remove('hidden');
     };
+    const clearModalError = () => document.getElementById('modal-error').classList.add('hidden');
+
+    // --- Modal focus management: keep Tab inside an open dialog ---
+    const getFocusable = (container) =>
+        [...container.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+            .filter(el => el.offsetParent !== null); // visible only
+
+    const attachFocusTrap = (modalEl) => {
+        const handler = (e) => {
+            if (e.key !== 'Tab') return;
+            const f = getFocusable(modalEl);
+            if (!f.length) return;
+            const first = f[0], last = f[f.length - 1];
+            if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+            else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        };
+        modalEl.addEventListener('keydown', handler);
+        return () => modalEl.removeEventListener('keydown', handler);
+    };
+
+    // ===================== RECOVERY KEY UI =====================
+    // One-time reveal of a recovery key. Deliberately no overlay/Escape dismiss —
+    // the user must acknowledge before the key is gone.
+    const showRecoveryModal = (recoveryKey, onDone) => {
+        const overlay = document.getElementById('recovery-modal');
+        const doneBtn = document.getElementById('recovery-done-btn');
+        const copyBtn = document.getElementById('copy-recovery-btn');
+        document.getElementById('recovery-key-value').textContent = recoveryKey;
+        const returnFocus = document.activeElement;
+        const detachTrap = attachFocusTrap(overlay);
+
+        const onCopy = async () => {
+            try {
+                await navigator.clipboard.writeText(recoveryKey);
+                copyBtn.innerHTML = '<i class="ph-bold ph-check" aria-hidden="true"></i> Copied';
+                setTimeout(() => { copyBtn.innerHTML = '<i class="ph-bold ph-copy" aria-hidden="true"></i> Copy'; }, 2000);
+            } catch { /* clipboard blocked — the key is selectable manually */ }
+        };
+        const onDoneClick = () => {
+            overlay.classList.add('hidden');
+            detachTrap();
+            copyBtn.removeEventListener('click', onCopy);
+            doneBtn.removeEventListener('click', onDoneClick);
+            if (returnFocus && returnFocus.focus) returnFocus.focus();
+            if (onDone) onDone();
+        };
+        copyBtn.addEventListener('click', onCopy);
+        doneBtn.addEventListener('click', onDoneClick);
+        overlay.classList.remove('hidden');
+        doneBtn.focus();
+    };
+
+    // "Forgot password?" → reset the password with the recovery key.
+    const resetModal = document.getElementById('reset-modal');
+    const resetForm = document.getElementById('reset-form');
+    const resetError = document.getElementById('reset-error');
+    let resetDetachTrap = null, resetReturnFocus = null;
+    const openResetModal = () => {
+        resetForm.reset();
+        resetError.classList.add('hidden');
+        resetReturnFocus = document.activeElement;
+        resetModal.classList.remove('hidden');
+        resetDetachTrap = attachFocusTrap(resetModal);
+        document.getElementById('reset-recovery-key').focus();
+    };
+    const closeResetModal = () => {
+        resetModal.classList.add('hidden');
+        if (resetDetachTrap) { resetDetachTrap(); resetDetachTrap = null; }
+        if (resetReturnFocus && resetReturnFocus.focus) resetReturnFocus.focus();
+    };
+    document.getElementById('forgot-password-btn').addEventListener('click', openResetModal);
+    document.getElementById('close-reset-btn').addEventListener('click', closeResetModal);
+    document.getElementById('cancel-reset-btn').addEventListener('click', closeResetModal);
+    resetModal.addEventListener('click', (e) => { if (e.target === resetModal) closeResetModal(); });
+    resetModal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeResetModal(); });
+    resetForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        resetError.classList.add('hidden');
+        const rk = document.getElementById('reset-recovery-key').value;
+        const np = document.getElementById('reset-new-password').value;
+        const ok = await AuthManager.resetWithRecoveryKey(rk, np);
+        if (!ok) { resetError.textContent = 'That recovery key is not valid.'; resetError.classList.remove('hidden'); return; }
+        closeResetModal();
+        showDashboard();
+    });
+
+    // Settings → generate / regenerate a recovery key (esp. for migrated accounts).
+    const updateRecoveryStatus = () => {
+        const has = AuthManager.hasRecoveryKey();
+        document.getElementById('setup-recovery-label').textContent = has ? 'Regenerate' : 'Generate';
+        document.getElementById('recovery-status-text').textContent = has
+            ? 'A recovery key is set up. Regenerating replaces it — the old key stops working.'
+            : 'No recovery key yet. Generate one so a forgotten password can be recovered.';
+    };
+    document.getElementById('setup-recovery-btn').addEventListener('click', async () => {
+        const rk = await AuthManager.setupRecoveryKey();
+        if (!rk) { showMsg(document.getElementById('recovery-msg'), 'Could not create a recovery key.', 'error'); return; }
+        showRecoveryModal(rk, updateRecoveryStatus);
+    });
 
     // ===================== GOLD PRICE MANAGER =====================
     const GOLD_CACHE_KEY = 'infinity_vault_gold_cache';
@@ -83,16 +227,16 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const fetchGoldPrice = async () => {
-        // Try metals.live API (free, no key, returns USD/oz)
+        // Live spot gold from gold-api.com (free, no key, returns USD per troy oz).
+        // Replaces api.metals.live, which is no longer reachable.
         try {
-            const res = await fetch('https://api.metals.live/v1/spot/gold');
+            const res = await fetch('https://api.gold-api.com/price/XAU');
             if (res.ok) {
                 const data = await res.json();
-                // data is array of objects with "price" in USD per troy oz
-                if (data && data.length > 0) {
-                    const usdPerOz = data[0].price;
-                    // Convert: 1 troy oz = 31.1035g, USD to INR ≈ 83.5 (approximate)
-                    // We'll try to get a live rate, fallback to 83.5
+                // { price: <USD per troy ounce>, symbol: "XAU", ... }
+                const usdPerOz = data && typeof data.price === 'number' ? data.price : null;
+                if (usdPerOz && usdPerOz > 0) {
+                    // Convert: 1 troy oz = 31.1035g. Get a live USD→INR rate, fallback to 83.5.
                     let usdToInr = 83.5;
                     try {
                         const fxRes = await fetch('https://open.er-api.com/v6/latest/USD');
@@ -135,12 +279,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const greetingText = document.getElementById('greeting-text');
 
     const showDashboard = () => {
-        authScreen.classList.add('hidden');
+        const wasAuth = !authScreen.classList.contains('hidden');
         dashboardEl.classList.remove('hidden');
         const username = AuthManager.getUsername();
         if (username) greetingText.textContent = `Welcome back, ${username}. Track your wealth growth securely.`;
+        InvestmentStorage.backupNow(); // snapshot last-good state at the start of the session
         updateDashboard();
         fetchGoldPrice().then(() => updateDashboard()); // refresh after gold update
+        // Cinematic unlock (auth recedes, dashboard rises) or a plain entrance.
+        if (window.Motion && wasAuth) {
+            Motion.unlock(() => authScreen.classList.add('hidden'));
+        } else {
+            authScreen.classList.add('hidden');
+            if (window.Motion) Motion.enter('dashboard');
+        }
     };
 
     const showAuth = () => {
@@ -153,10 +305,19 @@ document.addEventListener('DOMContentLoaded', () => {
             loginForm.classList.add('hidden');
             registerForm.classList.remove('hidden');
         }
+        if (window.Motion) Motion.enter('auth');
     };
 
-    if (AuthManager.isLoggedIn()) showDashboard();
-    else showAuth();
+    // Restore the session on load. With encryption on, the derived key is
+    // re-imported from sessionStorage and the vault decrypted before we render.
+    (async () => {
+        if (AuthManager.isLoggedIn() && await AuthManager.resume()) {
+            showDashboard();
+        } else {
+            AuthManager.logout(); // clear a stale flag we can't honor (e.g. no key)
+            showAuth();
+        }
+    })();
 
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -172,8 +333,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const cf = document.getElementById('register-confirm').value;
         if (pw.length < 4) { registerError.textContent = 'Password must be at least 4 characters.'; registerError.classList.remove('hidden'); return; }
         if (pw !== cf) { registerError.textContent = 'Passwords do not match.'; registerError.classList.remove('hidden'); return; }
-        await AuthManager.register(document.getElementById('register-username').value, pw);
-        showDashboard();
+        const rk = await AuthManager.register(document.getElementById('register-username').value, pw);
+        // register() returns the one-time recovery key (string) when encryption is
+        // available; show it before entering the dashboard.
+        if (typeof rk === 'string') showRecoveryModal(rk, showDashboard);
+        else showDashboard();
     });
 
     logoutBtn.addEventListener('click', () => { AuthManager.logout(); showAuth(); });
@@ -189,6 +353,8 @@ document.addEventListener('DOMContentLoaded', () => {
         navItems.forEach(li => li.classList.toggle('active', li.dataset.page === pageId));
         if (pageId === 'page-dashboard') updateDashboard();
         if (pageId === 'page-investments') renderAllInvestments();
+        if (pageId === 'page-settings') updateRecoveryStatus();
+        if (window.Motion) Motion.pageTransition(pageId);
     };
 
     navItems.forEach(li => {
@@ -251,6 +417,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const proofDisplayImg = document.getElementById('proof-display-img');
     let currentProofBase64 = null;
 
+    // Modal mode: null = adding a new investment, otherwise the id being edited.
+    const modalTitle = document.getElementById('modal-title');
+    const modalSubmitBtn = document.getElementById('modal-submit-btn');
+    let editingId = null;
+
     // ===================== FORM FIELD TOGGLE =====================
     const allConditionalInputs = [
         invAmountInput, invRateInput, invMaturityDate,
@@ -279,7 +450,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    invTypeSelect.addEventListener('change', updateFieldVisibility);
+    invTypeSelect.addEventListener('change', () => { updateFieldVisibility(); clearModalError(); });
 
     // ===================== LIVE PREVIEWS =====================
     const updateFDPreview = () => {
@@ -288,7 +459,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const start = invDateInput.value ? new Date(invDateInput.value) : null;
         const end = invMaturityDate.value ? new Date(invMaturityDate.value) : null;
         if (start && end && end > start) {
-            const days = Math.round((end - start) / 86400000);
+            const days = daysBetween(start, end);
             fdTenureDisplay.textContent = `${days} days`;
             fdMaturityDisplay.textContent = (principal > 0 && rate > 0) ? formatCurrency(Math.round(calculateFDMaturity(principal, rate, days))) : '₹ —';
         } else {
@@ -341,21 +512,91 @@ document.addEventListener('DOMContentLoaded', () => {
     themeToggleBtn.addEventListener('click', toggleTheme);
 
     // ===================== MODAL =====================
-    const openModal = () => { modal.classList.remove('hidden'); updateFieldVisibility(); updateGoldPreview(); };
+    let modalDetachTrap = null;
+    let modalReturnFocus = null;
+    const activateModalFocus = () => {
+        modalReturnFocus = document.activeElement; // the control that opened the modal
+        modalDetachTrap = attachFocusTrap(modal);
+        document.getElementById('inv-name').focus();
+    };
+
+    const openModal = () => {
+        editingId = null;
+        modalTitle.textContent = 'Add New Investment';
+        modalSubmitBtn.textContent = 'Save Investment';
+        clearModalError();
+        modal.classList.remove('hidden');
+        updateFieldVisibility();
+        updateGoldPreview();
+        activateModalFocus();
+    };
+
+    // Open the modal pre-filled with an existing investment for editing.
+    const openEditModal = (inv) => {
+        form.reset();
+        clearModalError();
+        editingId = inv.id;
+        modalTitle.textContent = 'Edit Investment';
+        modalSubmitBtn.textContent = 'Save Changes';
+
+        document.getElementById('inv-name').value = inv.name || '';
+        invTypeSelect.value = inv.type;
+        invDateInput.value = inv.date || '';
+        updateFieldVisibility();
+
+        if (inv.type === 'Fixed Deposit') {
+            invAmountInput.value = inv.amount ?? '';
+            invRateInput.value = inv.interestRate ?? '';
+            invMaturityDate.value = inv.maturityDate || '';
+            updateFDPreview();
+        } else if (inv.type === 'SIP') {
+            sipMonthly.value = inv.sipMonthly ?? '';
+            sipMonths.value = inv.sipDuration ?? '';
+            sipReturnRate.value = inv.sipRate ?? '';
+            updateSIPPreview();
+        } else if (inv.type === 'Gold') {
+            goldWeight.value = inv.goldWeight ?? '';
+            goldPurchasePrice.value = inv.goldPurchasePrice ?? '';
+            updateGoldPreview();
+        } else {
+            document.getElementById('generic-amount').value = inv.amount ?? '';
+            document.getElementById('inv-maturity').value = inv.maturity ?? '';
+        }
+
+        // Carry the existing proof forward unless the user picks a new file.
+        currentProofBase64 = inv.proof || null;
+        if (inv.proof) {
+            proofPreviewImg.src = inv.proof;
+            proofPreviewContainer.classList.remove('hidden');
+        } else {
+            proofPreviewContainer.classList.add('hidden');
+        }
+
+        modal.classList.remove('hidden');
+        activateModalFocus();
+    };
+
     const closeModal = () => {
         modal.classList.add('hidden');
         form.reset();
+        editingId = null;
+        modalTitle.textContent = 'Add New Investment';
+        modalSubmitBtn.textContent = 'Save Investment';
         updateFieldVisibility();
         fdTenureDisplay.textContent = '— days'; fdMaturityDisplay.textContent = '₹ —';
         sipInvestedDisplay.textContent = '₹ —'; sipMaturityDisplay.textContent = '₹ —'; sipGainDisplay.textContent = '₹ —';
         goldInvestedDisplay.textContent = '₹ —'; goldLiveDisplay.textContent = '₹ — (fetching...)';
         currentProofBase64 = null;
         proofPreviewContainer.classList.add('hidden');
+        clearModalError();
+        if (modalDetachTrap) { modalDetachTrap(); modalDetachTrap = null; }
+        if (modalReturnFocus && modalReturnFocus.focus) modalReturnFocus.focus();
     };
     addInvestmentBtn.addEventListener('click', openModal);
     closeModalBtn.addEventListener('click', closeModal);
     cancelModalBtn.addEventListener('click', closeModal);
     modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+    modal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 
     // Image compression for proof
     invProofInput.addEventListener('change', (e) => {
@@ -390,8 +631,22 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.readAsDataURL(file);
     });
 
-    closeProofBtn.addEventListener('click', () => proofModal.classList.add('hidden'));
-    proofModal.addEventListener('click', (e) => { if (e.target === proofModal) proofModal.classList.add('hidden'); });
+    let proofDetachTrap = null, proofReturnFocus = null;
+    const openProofModal = (src, trigger) => {
+        proofReturnFocus = trigger || document.activeElement;
+        proofDisplayImg.src = src;
+        proofModal.classList.remove('hidden');
+        proofDetachTrap = attachFocusTrap(proofModal);
+        closeProofBtn.focus();
+    };
+    const closeProofModal = () => {
+        proofModal.classList.add('hidden');
+        if (proofDetachTrap) { proofDetachTrap(); proofDetachTrap = null; }
+        if (proofReturnFocus && proofReturnFocus.focus) proofReturnFocus.focus();
+    };
+    closeProofBtn.addEventListener('click', closeProofModal);
+    proofModal.addEventListener('click', (e) => { if (e.target === proofModal) closeProofModal(); });
+    proofModal.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeProofModal(); });
 
     // ===================== FORM SUBMISSION =====================
     form.addEventListener('submit', (e) => {
@@ -406,7 +661,7 @@ document.addEventListener('DOMContentLoaded', () => {
             amount = parseFloat(invAmountInput.value) || 0;
             interestRate = parseFloat(invRateInput.value) || 0;
             maturityDate = invMaturityDate.value;
-            tenureDays = Math.round((new Date(maturityDate) - new Date(invDateInput.value)) / 86400000);
+            tenureDays = daysBetween(invDateInput.value, maturityDate);
             maturity = Math.round(calculateFDMaturity(amount, interestRate, tenureDays));
         } else if (type === 'SIP') {
             sipMonthlyAmt = parseFloat(sipMonthly.value) || 0;
@@ -425,7 +680,7 @@ document.addEventListener('DOMContentLoaded', () => {
             maturity = parseFloat(document.getElementById('inv-maturity').value) || 0;
         }
 
-        InvestmentStorage.addInvestment({
+        const record = {
             name: document.getElementById('inv-name').value,
             type, amount, maturity,
             date: invDateInput.value,
@@ -433,23 +688,54 @@ document.addEventListener('DOMContentLoaded', () => {
             sipMonthly: sipMonthlyAmt, sipDuration, sipRate,
             goldWeight: goldWeightVal, goldPurchasePrice: goldPurchasePriceVal,
             proof: currentProofBase64
-        });
+        };
+
+        // Semantic validation beyond the HTML min/required checks (e.g. amount > 0,
+        // maturity date after start date). Show the first problem and stop.
+        const errors = InvestmentStorage.validate(record);
+        if (errors.length) { showModalError(errors[0]); return; }
+        clearModalError();
+
+        if (editingId) {
+            record.id = editingId;
+            InvestmentStorage.updateInvestment(record);
+        } else {
+            InvestmentStorage.addInvestment(record);
+        }
+
         closeModal();
         updateDashboard();
+        renderAllInvestments();
     });
 
     // ===================== TABLE ACTIONS =====================
-    const handleTableAction = (e) => {
+    const handleTableAction = async (e) => {
+        const editBtn = e.target.closest('.edit-btn');
+        if (editBtn) {
+            const inv = InvestmentStorage.getInvestment(editBtn.dataset.id);
+            if (inv) openEditModal(inv);
+            return;
+        }
         const deleteBtn = e.target.closest('.delete-btn');
-        if (deleteBtn && confirm('Are you sure you want to delete this investment?')) {
-            InvestmentStorage.deleteInvestment(deleteBtn.dataset.id);
-            updateDashboard();
-            renderAllInvestments();
+        if (deleteBtn) {
+            const inv = InvestmentStorage.getInvestment(deleteBtn.dataset.id);
+            const label = inv && inv.name ? `“${inv.name}”` : 'This investment';
+            const ok = await confirmDialog({
+                title: 'Delete investment?',
+                message: `${label} will be permanently removed. This can't be undone.`,
+                confirmText: 'Delete',
+                danger: true
+            });
+            if (ok) {
+                InvestmentStorage.deleteInvestment(deleteBtn.dataset.id);
+                updateDashboard();
+                renderAllInvestments();
+            }
+            return;
         }
         const proofBtn = e.target.closest('.view-proof-btn');
         if (proofBtn) {
-            proofDisplayImg.src = proofBtn.dataset.proof;
-            proofModal.classList.remove('hidden');
+            openProofModal(proofBtn.dataset.proof, proofBtn);
         }
     };
     tbody.addEventListener('click', handleTableAction);
@@ -461,39 +747,35 @@ document.addEventListener('DOMContentLoaded', () => {
         const amt = Number(inv.amount) || 0;
         const mat = Number(inv.maturity) || 0;
         const isProfit = mat >= amt;
-        let invReturn = 0;
-        if (amt > 0) {
-            let days = inv.tenureDays;
-            if (!days || days <= 0) {
-                const d = inv.date ? new Date(inv.date) : new Date();
-                days = Math.max(1, Math.round((new Date() - d) / 86400000));
-            }
-            invReturn = Math.round(((mat - amt) / amt) * 100 * (365 / days) * 100) / 100;
-        }
+        // Money-weighted return (XIRR) — accounts for SIP contribution timing.
+        const invReturn = amt > 0 ? Math.round(investmentReturn(inv) * 100) / 100 : 0;
 
         let typeExtra = '';
         if (inv.type === 'Fixed Deposit' && inv.interestRate) {
-            typeExtra = `<br><small style="color:var(--text-muted)">${inv.interestRate}% · ${inv.tenureDays || '—'}d</small>`;
+            typeExtra = `<br><small style="color:var(--text-muted)">${Number(inv.interestRate)}% · ${Number(inv.tenureDays) || '—'}d</small>`;
         } else if (inv.type === 'SIP' && inv.sipMonthly) {
-            typeExtra = `<br><small style="color:var(--text-muted)">₹${inv.sipMonthly.toLocaleString('en-IN')}/mo · ${inv.sipDuration}mo</small>`;
+            typeExtra = `<br><small style="color:var(--text-muted)">₹${(Number(inv.sipMonthly) || 0).toLocaleString('en-IN')}/mo · ${Number(inv.sipDuration) || 0}mo</small>`;
         } else if (inv.type === 'Gold' && inv.goldWeight) {
-            typeExtra = `<br><small style="color:var(--text-muted)">${inv.goldWeight}g</small>`;
+            typeExtra = `<br><small style="color:var(--text-muted)">${Number(inv.goldWeight)}g</small>`;
         }
 
+        const nameLabel = escapeHtml(inv.name);
+        // proof is validated to be a data:image/* URL on import; escape defensively.
         let proofBtnHtml = inv.proof
-            ? `<button class="view-proof-btn" data-proof="${inv.proof}" title="View Proof" style="margin-right:0.5rem"><i class="ph-bold ph-image"></i></button>`
+            ? `<button class="view-proof-btn" data-proof="${escapeHtml(inv.proof)}" title="View Proof" aria-label="View proof for ${nameLabel}" style="margin-right:0.5rem"><i class="ph-bold ph-image" aria-hidden="true"></i></button>`
             : '';
 
         tr.innerHTML = `
-            <td><strong>${inv.name}</strong></td>
-            <td><span class="type-badge">${inv.type}</span>${typeExtra}</td>
+            <td><strong>${escapeHtml(inv.name)}</strong></td>
+            <td><span class="type-badge">${escapeHtml(inv.type)}</span>${typeExtra}</td>
             <td>${formatCurrency(amt)}</td>
             <td style="color:var(--${isProfit ? 'success' : 'danger'})">${formatCurrency(mat)}</td>
             <td style="color:var(--${isProfit ? 'success' : 'danger'});font-weight:600">${isProfit ? '+' : ''}${invReturn}%</td>
             <td>${formatDate(inv.date)}</td>
             <td>
                 ${proofBtnHtml}
-                <button class="delete-btn" data-id="${inv.id}" title="Delete"><i class="ph-bold ph-trash"></i></button>
+                <button class="edit-btn" data-id="${inv.id}" title="Edit" aria-label="Edit ${nameLabel}" style="margin-right:0.5rem"><i class="ph-bold ph-pencil-simple" aria-hidden="true"></i></button>
+                <button class="delete-btn" data-id="${inv.id}" title="Delete" aria-label="Delete ${nameLabel}"><i class="ph-bold ph-trash" aria-hidden="true"></i></button>
             </td>
         `;
         return tr;
@@ -502,10 +784,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // ===================== DASHBOARD RENDER =====================
     const updateDashboard = () => {
         const kpis = InvestmentStorage.getKPIs();
-        kpiInvested.textContent = formatCurrency(kpis.totalInvested);
-        kpiMaturity.textContent = formatCurrency(kpis.totalMaturity);
-        const rFmt = kpis.returnsPercentage.toFixed(2) + '%';
-        kpiReturns.textContent = (kpis.returnsPercentage > 0 ? '+' : '') + rFmt;
+        // Count-up when motion is on (tweens from the last shown value, so edits
+        // animate the delta); falls back to a plain set otherwise.
+        const fmtPct = (v) => (v > 0 ? '+' : '') + v.toFixed(2) + '%';
+        const setKpi = (el, val, fmt) => window.Motion ? Motion.countUp(el, val, fmt) : (el.textContent = fmt(val));
+        setKpi(kpiInvested, kpis.totalInvested, formatCurrency);
+        setKpi(kpiMaturity, kpis.totalMaturity, formatCurrency);
+        setKpi(kpiReturns, kpis.returnsPercentage, fmtPct);
         kpiReturns.className = 'kpi-value ' + (kpis.returnsPercentage >= 0 ? 'positive' : 'negative');
 
         // Show/hide gold banner
@@ -529,6 +814,7 @@ document.addEventListener('DOMContentLoaded', () => {
             emptyState.classList.add('hidden');
             tableContainer.classList.remove('hidden');
             investments.slice(0, 5).forEach(inv => tbody.appendChild(buildRow(inv)));
+            if (window.Motion) Motion.revealChildren(tbody);
         }
     };
 
@@ -556,6 +842,7 @@ document.addEventListener('DOMContentLoaded', () => {
             allEmpty.classList.add('hidden');
             allTable.classList.remove('hidden');
             investments.forEach(inv => allTbody.appendChild(buildRow(inv)));
+            if (window.Motion) Motion.revealChildren(allTbody);
         }
     };
 
@@ -588,12 +875,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const current = document.getElementById('current-password').value;
         const newPass = document.getElementById('new-password').value;
         const confirmNew = document.getElementById('confirm-new-password').value;
-        const username = AuthManager.getUsername();
-        const valid = await AuthManager.login(username, current);
-        if (!valid) { showMsg(passwordMsg, 'Current password is incorrect.', 'error'); return; }
         if (newPass.length < 4) { showMsg(passwordMsg, 'New password must be at least 4 characters.', 'error'); return; }
         if (newPass !== confirmNew) { showMsg(passwordMsg, 'New passwords do not match.', 'error'); return; }
-        await AuthManager.register(username, newPass);
+        // Re-wraps the data key under the new password (no vault re-encryption,
+        // recovery key unchanged). Verifies the current password internally.
+        const ok = await AuthManager.changePassword(current, newPass);
+        if (!ok) { showMsg(passwordMsg, 'Current password is incorrect.', 'error'); return; }
         showMsg(passwordMsg, 'Password updated successfully!', 'success');
         passwordForm.reset();
     });
@@ -614,8 +901,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const reader = new FileReader();
         reader.onload = (ev) => {
             try {
-                const imported = JSON.parse(ev.target.result);
-                if (!Array.isArray(imported)) throw new Error('Invalid');
+                const parsed = JSON.parse(ev.target.result);
+                const imported = InvestmentStorage.normalizeImported(parsed);
+                if (!imported) throw new Error('Invalid');
+                InvestmentStorage.backupNow(); // snapshot current data before overwriting
                 InvestmentStorage.saveInvestments(imported);
                 updateDashboard(); renderAllInvestments();
                 showMsg(document.getElementById('data-msg'), `Imported ${imported.length} investments!`, 'success');
@@ -625,13 +914,42 @@ document.addEventListener('DOMContentLoaded', () => {
         e.target.value = '';
     });
 
-    document.getElementById('clear-data-btn').addEventListener('click', () => {
-        if (confirm('⚠️ This will permanently delete ALL investment data. Are you sure?')) {
+    document.getElementById('clear-data-btn').addEventListener('click', async () => {
+        const ok = await confirmDialog({
+            title: 'Clear all data?',
+            message: 'Every investment will be permanently deleted. A backup is kept so you can restore.',
+            confirmText: 'Clear everything',
+            danger: true
+        });
+        if (ok) {
+            InvestmentStorage.backupNow(); // keep a recoverable snapshot before wiping
             InvestmentStorage.saveInvestments([]);
             updateDashboard(); renderAllInvestments();
-            showMsg(document.getElementById('data-msg'), 'All data cleared.', 'success');
+            showMsg(document.getElementById('data-msg'), 'All data cleared. Use “Restore backup” if this was a mistake.', 'success');
         }
     });
+
+    const restoreBackupBtn = document.getElementById('restore-backup-btn');
+    if (restoreBackupBtn) {
+        restoreBackupBtn.addEventListener('click', async () => {
+            const backup = InvestmentStorage.getBackup();
+            if (!backup) {
+                showMsg(document.getElementById('data-msg'), 'No backup available yet.', 'error');
+                return;
+            }
+            const when = new Date(backup.timestamp).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+            const ok = await confirmDialog({
+                title: 'Restore backup?',
+                message: `Restore ${backup.count} investment(s) from the backup saved on ${when}? This replaces your current data.`,
+                confirmText: 'Restore'
+            });
+            if (ok) {
+                await InvestmentStorage.restoreBackup();
+                updateDashboard(); renderAllInvestments();
+                showMsg(document.getElementById('data-msg'), `Restored ${backup.count} investments from backup.`, 'success');
+            }
+        });
+    }
 
     // ===================== INIT =====================
     updateFieldVisibility();

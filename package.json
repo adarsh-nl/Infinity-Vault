@@ -1,0 +1,16 @@
+{
+  "name": "infinity-vault",
+  "version": "1.0.0",
+  "description": "Privacy-first personal investment dashboard — vanilla JS, zero runtime dependencies.",
+  "license": "MIT",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "vitest": "^2.1.9"
+  }
+}
